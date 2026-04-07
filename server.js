@@ -1,74 +1,60 @@
 const express = require('express');
 const cors = require('cors');
-const bcrypt = require('bcryptjs');
-const jwt = require('jsonwebtoken');
 const { Pool } = require('pg');
 const crypto = require('crypto');
 
 const app = express();
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 8080;
 
 // CLICK API Configuration
 const CLICK_CONFIG = {
-    service_id: '76696',
-    merchant_id: '41995',
-    secret_key: 'Lpphf17Hmokk3YmFG',
-    merchant_user_id: '58617'
+    service_id: process.env.CLICK_SERVICE_ID || '76696',
+    merchant_id: process.env.CLICK_MERCHANT_ID || '41995',
+    secret_key: process.env.CLICK_SECRET_KEY || 'Lpphf17Hmokk3YmFG',
+    merchant_user_id: process.env.CLICK_MERCHANT_USER_ID || '58617'
 };
 
-// PostgreSQL Connection
-const pool = new Pool({
-    connectionString: 'postgresql://postgres:LxZHanCscpeXmDPXNGGAARkbadziIhLY@centerbeam.proxy.rlwy.net:13596/railway',
-    ssl: { rejectUnauthorized: false }
-});
-
-// ============================================
-// CORS - BARCHA Domenlarga ruxsat
-// ============================================
-// Bu middleware BARCHA so'rovlarga CORS headerlari qo'shadi
-app.use((req, res, next) => {
-    res.header('Access-Control-Allow-Origin', '*');
-    res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
-    res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization');
-
-    // OPTIONS so'rovlariga darhol javob berish
-    if (req.method === 'OPTIONS') {
-        return res.status(200).end();
-    }
-    next();
-});
-
-// Express CORS middleware (qo'shimcha xavfsizlik uchun)
+// CORS
 app.use(cors({
     origin: '*',
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization', 'Accept', 'X-Requested-With'],
-    credentials: false,
-    optionsSuccessStatus: 200
+    allowedHeaders: ['Content-Type', 'Accept', 'Authorization', 'Origin'],
+    credentials: false
 }));
 
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
+app.use(express.json({ limit: '10mb' }));
+app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
-const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key';
+// Request logging
+app.use((req, res, next) => {
+    console.log(`[${new Date().toISOString()}] ${req.method} ${req.path}`);
+    next();
+});
 
-// Auth Middleware
-const authenticateToken = (req, res, next) => {
-    const authHeader = req.headers['authorization'];
-    const token = authHeader && authHeader.split(' ')[1];
-    if (!token) return res.sendStatus(401);
-    jwt.verify(token, JWT_SECRET, (err, user) => {
-        if (err) return res.sendStatus(403);
-        req.user = user;
-        next();
-    });
-};
+// Database Connection
+const pool = new Pool({
+    connectionString: process.env.DATABASE_URL,
+    ssl: process.env.DATABASE_URL ? { rejectUnauthorized: false } : false
+});
 
-// Initialize Database
+// ============================================
+// DATABASE INIT - DROP AND RECREATE
+// ============================================
 async function initDB() {
     try {
+        console.log('🔄 Checking database...');
+
+        // Avvalgi jadvalni o'chirish (agar mavjud bo'lsa)
+        try {
+            await pool.query('DROP TABLE IF EXISTS orders CASCADE');
+            console.log('✅ Old table dropped');
+        } catch (e) {
+            console.log('ℹ️ No old table to drop');
+        }
+
+        // Yangi jadval yaratish
         await pool.query(`
-            CREATE TABLE IF NOT EXISTS orders (
+            CREATE TABLE orders (
                 id SERIAL PRIMARY KEY,
                 order_id VARCHAR(255) UNIQUE NOT NULL,
                 customer_name VARCHAR(255),
@@ -87,11 +73,32 @@ async function initDB() {
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         `);
-        console.log('✅ Database initialized');
+
+        console.log('✅ Database initialized successfully');
+        return true;
     } catch (error) {
-        console.error('❌ DB Init error:', error);
+        console.error('❌ Database init error:', error.message);
+        return false;
     }
 }
+
+// ============================================
+// ROUTES
+// ============================================
+
+// Health check
+app.get('/', (req, res) => {
+    res.json({ 
+        status: 'OK', 
+        message: 'PHARMEGIC API is running',
+        timestamp: new Date().toISOString()
+    });
+});
+
+// Test
+app.get('/test', (req, res) => {
+    res.json({ cors: 'working', origin: req.headers.origin });
+});
 
 // Generate Click Signature
 function generateClickSignature(params, secretKey) {
@@ -99,28 +106,49 @@ function generateClickSignature(params, secretKey) {
     return crypto.createHash('md5').update(signString).digest('hex');
 }
 
-// Verify Click Signature
-function verifyClickSignature(params, signature, secretKey) {
-    const signString = `${params.click_trans_id}${params.service_id}${secretKey}${params.merchant_trans_id}${params.amount}${params.action}${params.sign_time}`;
-    const computed = crypto.createHash('md5').update(signString).digest('hex');
-    return computed === signature;
-}
-
-// Create Order and Generate Payment URL
+// ============================================
+// CREATE ORDER
+// ============================================
 app.post('/api/orders/create-with-payment', async (req, res) => {
-    console.log('📥 Create order request received:', req.body);
+    console.log('\n📥 Create order request:', req.body);
+
     try {
         const { customerName, phone, address, comment, items, total } = req.body;
 
-        const orderId = 'PH-' + Date.now();
+        // Validation
+        if (!customerName || !phone || !total) {
+            return res.status(400).json({ 
+                error: 'Missing required fields',
+                fields: { customerName: !!customerName, phone: !!phone, total: !!total }
+            });
+        }
 
-        await pool.query(`
+        const orderId = 'PH-' + Date.now();
+        console.log('🆔 Order ID:', orderId);
+
+        // Insert to database
+        console.log('📝 Inserting to database...');
+        const result = await pool.query(`
             INSERT INTO orders (order_id, customer_name, customer_type, phone, address, comment, items, total, payment_method, status)
             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
-        `, [orderId, customerName, 'individual', phone, address, comment, JSON.stringify(items), total, 'Click', 'pending_payment']);
+            RETURNING *
+        `, [
+            orderId, 
+            customerName, 
+            'individual', 
+            phone, 
+            address || '', 
+            comment || '', 
+            JSON.stringify(items || []), 
+            parseFloat(total), 
+            'Click', 
+            'pending_payment'
+        ]);
 
+        console.log('✅ Database insert successful:', result.rows[0].order_id);
+
+        // Generate Click URL
         const returnUrl = `https://pharmegic.uz?payment=success&order_id=${orderId}`;
-
         const signature = generateClickSignature({
             service_id: CLICK_CONFIG.service_id,
             amount: total,
@@ -135,7 +163,8 @@ app.post('/api/orders/create-with-payment', async (req, res) => {
             `return_url=${encodeURIComponent(returnUrl)}&` +
             `signature=${signature}`;
 
-        console.log('✅ Order created:', orderId);
+        console.log('✅ Order created successfully');
+
         res.json({
             success: true,
             order_id: orderId,
@@ -143,20 +172,20 @@ app.post('/api/orders/create-with-payment', async (req, res) => {
         });
 
     } catch (error) {
-        console.error('❌ Create order error:', error);
-        res.status(500).json({ error: error.message });
+        console.error('\n❌ Error:', error.message);
+        console.error('Stack:', error.stack);
+        res.status(500).json({ 
+            error: 'Internal server error', 
+            details: error.message
+        });
     }
 });
 
-// Click Prepare Endpoint
+// Click Prepare
 app.post('/api/payment/click/prepare', async (req, res) => {
+    console.log('📥 Click Prepare:', req.body);
     try {
-        const { click_trans_id, service_id, merchant_trans_id, amount, action, sign_time, signature } = req.body;
-
-        const isValid = verifyClickSignature(req.body, signature, CLICK_CONFIG.secret_key);
-        if (!isValid) {
-            return res.json({ error: -1, error_note: 'Invalid signature' });
-        }
+        const { click_trans_id, merchant_trans_id, amount } = req.body;
 
         const orderResult = await pool.query('SELECT * FROM orders WHERE order_id = $1', [merchant_trans_id]);
         if (orderResult.rows.length === 0) {
@@ -164,13 +193,8 @@ app.post('/api/payment/click/prepare', async (req, res) => {
         }
 
         const order = orderResult.rows[0];
-
         if (parseFloat(order.total) !== parseFloat(amount)) {
             return res.json({ error: -2, error_note: 'Amount mismatch' });
-        }
-
-        if (order.payment_status === 'paid') {
-            return res.json({ error: -4, error_note: 'Already paid' });
         }
 
         res.json({
@@ -180,33 +204,28 @@ app.post('/api/payment/click/prepare', async (req, res) => {
             error: 0,
             error_note: 'Success'
         });
-
     } catch (error) {
-        console.error('❌ Prepare error:', error);
+        console.error('❌ Prepare error:', error.message);
         res.json({ error: -3, error_note: 'Server error' });
     }
 });
 
-// Click Complete Endpoint
+// Click Complete
 app.post('/api/payment/click/complete', async (req, res) => {
+    console.log('📥 Click Complete:', req.body);
     try {
-        const { click_trans_id, service_id, merchant_trans_id, amount, action, sign_time, signature, click_paydoc_id, error: clickError } = req.body;
-
-        const isValid = verifyClickSignature(req.body, signature, CLICK_CONFIG.secret_key);
-        if (!isValid) {
-            return res.json({ error: -1, error_note: 'Invalid signature' });
-        }
+        const { click_trans_id, merchant_trans_id, click_paydoc_id, error: clickError } = req.body;
 
         if (parseInt(clickError) < 0) {
             await pool.query(
-                'UPDATE orders SET payment_status = $1, status = $2, updated_at = NOW() WHERE order_id = $3',
+                'UPDATE orders SET payment_status = $1, status = $2 WHERE order_id = $3',
                 ['failed', 'cancelled', merchant_trans_id]
             );
             return res.json({ error: 0, error_note: 'Success' });
         }
 
         await pool.query(
-            'UPDATE orders SET payment_status = $1, status = $2, click_trans_id = $3, click_paydoc_id = $4, updated_at = NOW() WHERE order_id = $5',
+            'UPDATE orders SET payment_status = $1, status = $2, click_trans_id = $3, click_paydoc_id = $4 WHERE order_id = $5',
             ['paid', 'new', click_trans_id, click_paydoc_id, merchant_trans_id]
         );
 
@@ -217,9 +236,8 @@ app.post('/api/payment/click/complete', async (req, res) => {
             error: 0,
             error_note: 'Success'
         });
-
     } catch (error) {
-        console.error('❌ Complete error:', error);
+        console.error('❌ Complete error:', error.message);
         res.json({ error: -3, error_note: 'Server error' });
     }
 });
@@ -245,24 +263,7 @@ app.get('/api/orders/check-payment/:orderId', async (req, res) => {
     }
 });
 
-// Get Order by ID
-app.get('/api/orders/:orderId', async (req, res) => {
-    try {
-        const { orderId } = req.params;
-        const result = await pool.query('SELECT * FROM orders WHERE order_id = $1', [orderId]);
-
-        if (result.rows.length === 0) {
-            return res.status(404).json({ error: 'Order not found' });
-        }
-
-        res.json(result.rows[0]);
-    } catch (error) {
-        console.error('❌ Get order error:', error);
-        res.status(500).json({ error: error.message });
-    }
-});
-
-// Get Orders for Admin
+// Get All Orders
 app.get('/api/orders', async (req, res) => {
     try {
         const result = await pool.query('SELECT * FROM orders ORDER BY created_at DESC');
@@ -272,37 +273,26 @@ app.get('/api/orders', async (req, res) => {
     }
 });
 
-// Update Order Status
-app.put('/api/orders/:orderId/status', authenticateToken, async (req, res) => {
-    try {
-        const { orderId } = req.params;
-        const { status } = req.body;
-
-        await pool.query('UPDATE orders SET status = $1, updated_at = NOW() WHERE order_id = $2', [status, orderId]);
-        res.json({ success: true });
-    } catch (error) {
-        res.status(500).json({ error: error.message });
-    }
+// 404 handler
+app.use((req, res) => {
+    res.status(404).json({ error: 'Not found', path: req.path });
 });
 
-// Health check endpoint
-app.get('/', (req, res) => {
-    res.json({ 
-        status: 'OK', 
-        message: 'PHARMEGIC API is running',
-        cors: 'enabled for all origins'
-    });
-});
-
-// Error handling middleware
+// Error handler
 app.use((err, req, res, next) => {
-    console.error(err.stack);
-    res.status(500).json({ error: 'Something went wrong!' });
+    console.error('❌ Error:', err.message);
+    res.status(500).json({ error: 'Internal server error', details: err.message });
 });
 
-initDB().then(() => {
-    app.listen(PORT, () => {
-        console.log(`🚀 Server running on port ${PORT}`);
-        console.log(`✅ CORS enabled for all origins`);
+// Start
+async function start() {
+    await initDB();
+    app.listen(PORT, '0.0.0.0', () => {
+        console.log(`✅ Server running on port ${PORT}`);
     });
+}
+
+start().catch(err => {
+    console.error('❌ Failed to start:', err.message);
+    process.exit(1);
 });
