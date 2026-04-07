@@ -258,6 +258,24 @@ app.put('/api/orders/:orderId/status', authenticateToken, async (req, res) => {
     }
 });
 
+// Get Order by ID - To'lovdan keyin buyurtma ma'lumotlarini olish uchun
+app.get('/api/orders/:orderId', async (req, res) => {
+    try {
+        const { orderId } = req.params;
+        const result = await pool.query('SELECT * FROM orders WHERE order_id = $1', [orderId]);
+        
+        if (result.rows.length === 0) {
+            return res.status(404).json({ error: 'Order not found' });
+        }
+        
+        res.json(result.rows[0]);
+    } catch (error) {
+        console.error('Get order error:', error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+
 initDB().then(() => {
     app.listen(PORT, () => {
         console.log(`Server running on port ${PORT}`);
