@@ -22,8 +22,31 @@ const pool = new Pool({
     ssl: { rejectUnauthorized: false }
 });
 
-app.use(cors());
+// CORS Configuration - BARCHA Domenlarga ruxsat (Development va Production uchun)
+app.use(cors({
+    origin: '*',
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'Accept', 'X-Requested-With'],
+    credentials: true,
+    preflightContinue: false,
+    optionsSuccessStatus: 204
+}));
+
+// Qo'lda CORS headerlari (qo'shimcha xavfsizlik uchun)
+app.use((req, res, next) => {
+    res.header('Access-Control-Allow-Origin', '*');
+    res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+    res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization');
+    
+    // OPTIONS so'rovlarini darhol javob berish (Preflight)
+    if (req.method === 'OPTIONS') {
+        return res.status(204).send();
+    }
+    next();
+});
+
 app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
 
 const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key';
 
@@ -220,7 +243,7 @@ app.post('/api/payment/click/complete', async (req, res) => {
 app.get('/api/orders/check-payment/:orderId', async (req, res) => {
     try {
         const { orderId } = req.params;
-        const result = await pool.query('SELECT payment_status, status FROM orders WHERE order_id = $1', [orderId]);
+        const result = await pool.query('SELECT payment_status, status, click_trans_id, click_paydoc_id FROM orders WHERE order_id = $1', [orderId]);
         
         if (result.rows.length === 0) {
             return res.status(404).json({ error: 'Order not found' });
@@ -228,9 +251,28 @@ app.get('/api/orders/check-payment/:orderId', async (req, res) => {
         
         res.json({
             payment_status: result.rows[0].payment_status,
-            order_status: result.rows[0].status
+            order_status: result.rows[0].status,
+            click_trans_id: result.rows[0].click_trans_id,
+            click_paydoc_id: result.rows[0].click_paydoc_id
         });
     } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// Get Order by ID (for retrieving order details after payment)
+app.get('/api/orders/:orderId', async (req, res) => {
+    try {
+        const { orderId } = req.params;
+        const result = await pool.query('SELECT * FROM orders WHERE order_id = $1', [orderId]);
+        
+        if (result.rows.length === 0) {
+            return res.status(404).json({ error: 'Order not found' });
+        }
+        
+        res.json(result.rows[0]);
+    } catch (error) {
+        console.error('Get order error:', error);
         res.status(500).json({ error: error.message });
     }
 });
@@ -258,26 +300,20 @@ app.put('/api/orders/:orderId/status', authenticateToken, async (req, res) => {
     }
 });
 
-// Get Order by ID - To'lovdan keyin buyurtma ma'lumotlarini olish uchun
-app.get('/api/orders/:orderId', async (req, res) => {
-    try {
-        const { orderId } = req.params;
-        const result = await pool.query('SELECT * FROM orders WHERE order_id = $1', [orderId]);
-        
-        if (result.rows.length === 0) {
-            return res.status(404).json({ error: 'Order not found' });
-        }
-        
-        res.json(result.rows[0]);
-    } catch (error) {
-        console.error('Get order error:', error);
-        res.status(500).json({ error: error.message });
-    }
+// Health check endpoint
+app.get('/', (req, res) => {
+    res.json({ status: 'OK', message: 'PHARMEGIC API is running' });
 });
 
+// Error handling middleware
+app.use((err, req, res, next) => {
+    console.error(err.stack);
+    res.status(500).json({ error: 'Something went wrong!' });
+});
 
 initDB().then(() => {
     app.listen(PORT, () => {
         console.log(`Server running on port ${PORT}`);
+        console.log(`CORS enabled for all origins`);
     });
 });
