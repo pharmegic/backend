@@ -22,17 +22,31 @@ const pool = new Pool({
     ssl: { rejectUnauthorized: false }
 });
 
-// CORS Configuration - BARCHA Domenlarga ruxsat
+// ============================================
+// CORS - BARCHA Domenlarga ruxsat
+// ============================================
+// Bu middleware BARCHA so'rovlarga CORS headerlari qo'shadi
+app.use((req, res, next) => {
+    res.header('Access-Control-Allow-Origin', '*');
+    res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+    res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization');
+
+    // OPTIONS so'rovlariga darhol javob berish
+    if (req.method === 'OPTIONS') {
+        return res.status(200).end();
+    }
+    next();
+});
+
+// Express CORS middleware (qo'shimcha xavfsizlik uchun)
 app.use(cors({
     origin: '*',
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization', 'Accept', 'X-Requested-With'],
     credentials: false,
-    preflightContinue: false,
     optionsSuccessStatus: 200
 }));
 
-// Body parsers
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
@@ -73,9 +87,9 @@ async function initDB() {
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         `);
-        console.log('Database initialized with Click support');
+        console.log('✅ Database initialized');
     } catch (error) {
-        console.error('DB Init error:', error);
+        console.error('❌ DB Init error:', error);
     }
 }
 
@@ -94,6 +108,7 @@ function verifyClickSignature(params, signature, secretKey) {
 
 // Create Order and Generate Payment URL
 app.post('/api/orders/create-with-payment', async (req, res) => {
+    console.log('📥 Create order request received:', req.body);
     try {
         const { customerName, phone, address, comment, items, total } = req.body;
 
@@ -120,6 +135,7 @@ app.post('/api/orders/create-with-payment', async (req, res) => {
             `return_url=${encodeURIComponent(returnUrl)}&` +
             `signature=${signature}`;
 
+        console.log('✅ Order created:', orderId);
         res.json({
             success: true,
             order_id: orderId,
@@ -127,7 +143,7 @@ app.post('/api/orders/create-with-payment', async (req, res) => {
         });
 
     } catch (error) {
-        console.error('Create order error:', error);
+        console.error('❌ Create order error:', error);
         res.status(500).json({ error: error.message });
     }
 });
@@ -166,7 +182,7 @@ app.post('/api/payment/click/prepare', async (req, res) => {
         });
 
     } catch (error) {
-        console.error('Prepare error:', error);
+        console.error('❌ Prepare error:', error);
         res.json({ error: -3, error_note: 'Server error' });
     }
 });
@@ -203,7 +219,7 @@ app.post('/api/payment/click/complete', async (req, res) => {
         });
 
     } catch (error) {
-        console.error('Complete error:', error);
+        console.error('❌ Complete error:', error);
         res.json({ error: -3, error_note: 'Server error' });
     }
 });
@@ -241,7 +257,7 @@ app.get('/api/orders/:orderId', async (req, res) => {
 
         res.json(result.rows[0]);
     } catch (error) {
-        console.error('Get order error:', error);
+        console.error('❌ Get order error:', error);
         res.status(500).json({ error: error.message });
     }
 });
@@ -271,7 +287,11 @@ app.put('/api/orders/:orderId/status', authenticateToken, async (req, res) => {
 
 // Health check endpoint
 app.get('/', (req, res) => {
-    res.json({ status: 'OK', message: 'PHARMEGIC API is running' });
+    res.json({ 
+        status: 'OK', 
+        message: 'PHARMEGIC API is running',
+        cors: 'enabled for all origins'
+    });
 });
 
 // Error handling middleware
@@ -282,7 +302,7 @@ app.use((err, req, res, next) => {
 
 initDB().then(() => {
     app.listen(PORT, () => {
-        console.log(`Server running on port ${PORT}`);
-        console.log(`CORS enabled for all origins`);
+        console.log(`🚀 Server running on port ${PORT}`);
+        console.log(`✅ CORS enabled for all origins`);
     });
 });
