@@ -22,29 +22,17 @@ const pool = new Pool({
     ssl: { rejectUnauthorized: false }
 });
 
-// CORS Configuration - BARCHA Domenlarga ruxsat (Development va Production uchun)
+// CORS Configuration - BARCHA Domenlarga ruxsat
 app.use(cors({
     origin: '*',
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization', 'Accept', 'X-Requested-With'],
-    credentials: true,
+    credentials: false,
     preflightContinue: false,
-    optionsSuccessStatus: 204
+    optionsSuccessStatus: 200
 }));
 
-// Qo'lda CORS headerlari (qo'shimcha xavfsizlik uchun)
-app.use((req, res, next) => {
-    res.header('Access-Control-Allow-Origin', '*');
-    res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
-    res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization');
-    
-    // OPTIONS so'rovlarini darhol javob berish (Preflight)
-    if (req.method === 'OPTIONS') {
-        return res.status(204).send();
-    }
-    next();
-});
-
+// Body parsers
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
@@ -93,7 +81,6 @@ async function initDB() {
 
 // Generate Click Signature
 function generateClickSignature(params, secretKey) {
-    // Click signature: md5(service_id + amount + transaction_param + secret_key)
     const signString = `${params.service_id}${params.amount}${params.transaction_param}${secretKey}`;
     return crypto.createHash('md5').update(signString).digest('hex');
 }
@@ -109,33 +96,22 @@ function verifyClickSignature(params, signature, secretKey) {
 app.post('/api/orders/create-with-payment', async (req, res) => {
     try {
         const { customerName, phone, address, comment, items, total } = req.body;
-        
-        // Generate unique order ID
+
         const orderId = 'PH-' + Date.now();
-        
-        // Save order to DB with pending status
+
         await pool.query(`
             INSERT INTO orders (order_id, customer_name, customer_type, phone, address, comment, items, total, payment_method, status)
             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
         `, [orderId, customerName, 'individual', phone, address, comment, JSON.stringify(items), total, 'Click', 'pending_payment']);
-        
-        // Generate Click Payment URL
+
         const returnUrl = `https://pharmegic.uz?payment=success&order_id=${orderId}`;
-        
-        const clickParams = {
-            service_id: CLICK_CONFIG.service_id,
-            merchant_id: CLICK_CONFIG.merchant_id,
-            amount: total,
-            transaction_param: orderId,
-            return_url: returnUrl
-        };
-        
+
         const signature = generateClickSignature({
             service_id: CLICK_CONFIG.service_id,
             amount: total,
             transaction_param: orderId
         }, CLICK_CONFIG.secret_key);
-        
+
         const paymentUrl = `https://my.click.uz/services/pay?` +
             `service_id=${CLICK_CONFIG.service_id}&` +
             `merchant_id=${CLICK_CONFIG.merchant_id}&` +
@@ -143,48 +119,44 @@ app.post('/api/orders/create-with-payment', async (req, res) => {
             `transaction_param=${orderId}&` +
             `return_url=${encodeURIComponent(returnUrl)}&` +
             `signature=${signature}`;
-        
+
         res.json({
             success: true,
             order_id: orderId,
             payment_url: paymentUrl
         });
-        
+
     } catch (error) {
         console.error('Create order error:', error);
         res.status(500).json({ error: error.message });
     }
 });
 
-// Click Prepare Endpoint (Click calls this before payment)
+// Click Prepare Endpoint
 app.post('/api/payment/click/prepare', async (req, res) => {
     try {
         const { click_trans_id, service_id, merchant_trans_id, amount, action, sign_time, signature } = req.body;
-        
-        // Verify signature
+
         const isValid = verifyClickSignature(req.body, signature, CLICK_CONFIG.secret_key);
         if (!isValid) {
             return res.json({ error: -1, error_note: 'Invalid signature' });
         }
-        
-        // Check order exists
+
         const orderResult = await pool.query('SELECT * FROM orders WHERE order_id = $1', [merchant_trans_id]);
         if (orderResult.rows.length === 0) {
             return res.json({ error: -5, error_note: 'Order not found' });
         }
-        
+
         const order = orderResult.rows[0];
-        
-        // Check amount matches
+
         if (parseFloat(order.total) !== parseFloat(amount)) {
             return res.json({ error: -2, error_note: 'Amount mismatch' });
         }
-        
-        // Check if already paid
+
         if (order.payment_status === 'paid') {
             return res.json({ error: -4, error_note: 'Already paid' });
         }
-        
+
         res.json({
             click_trans_id: click_trans_id,
             merchant_trans_id: merchant_trans_id,
@@ -192,25 +164,23 @@ app.post('/api/payment/click/prepare', async (req, res) => {
             error: 0,
             error_note: 'Success'
         });
-        
+
     } catch (error) {
         console.error('Prepare error:', error);
         res.json({ error: -3, error_note: 'Server error' });
     }
 });
 
-// Click Complete Endpoint (Click calls this after payment)
+// Click Complete Endpoint
 app.post('/api/payment/click/complete', async (req, res) => {
     try {
         const { click_trans_id, service_id, merchant_trans_id, amount, action, sign_time, signature, click_paydoc_id, error: clickError } = req.body;
-        
-        // Verify signature
+
         const isValid = verifyClickSignature(req.body, signature, CLICK_CONFIG.secret_key);
         if (!isValid) {
             return res.json({ error: -1, error_note: 'Invalid signature' });
         }
-        
-        // If Click reported error
+
         if (parseInt(clickError) < 0) {
             await pool.query(
                 'UPDATE orders SET payment_status = $1, status = $2, updated_at = NOW() WHERE order_id = $3',
@@ -218,13 +188,12 @@ app.post('/api/payment/click/complete', async (req, res) => {
             );
             return res.json({ error: 0, error_note: 'Success' });
         }
-        
-        // Update order as paid
+
         await pool.query(
             'UPDATE orders SET payment_status = $1, status = $2, click_trans_id = $3, click_paydoc_id = $4, updated_at = NOW() WHERE order_id = $5',
             ['paid', 'new', click_trans_id, click_paydoc_id, merchant_trans_id]
         );
-        
+
         res.json({
             click_trans_id: click_trans_id,
             merchant_trans_id: merchant_trans_id,
@@ -232,7 +201,7 @@ app.post('/api/payment/click/complete', async (req, res) => {
             error: 0,
             error_note: 'Success'
         });
-        
+
     } catch (error) {
         console.error('Complete error:', error);
         res.json({ error: -3, error_note: 'Server error' });
@@ -244,11 +213,11 @@ app.get('/api/orders/check-payment/:orderId', async (req, res) => {
     try {
         const { orderId } = req.params;
         const result = await pool.query('SELECT payment_status, status, click_trans_id, click_paydoc_id FROM orders WHERE order_id = $1', [orderId]);
-        
+
         if (result.rows.length === 0) {
             return res.status(404).json({ error: 'Order not found' });
         }
-        
+
         res.json({
             payment_status: result.rows[0].payment_status,
             order_status: result.rows[0].status,
@@ -260,16 +229,16 @@ app.get('/api/orders/check-payment/:orderId', async (req, res) => {
     }
 });
 
-// Get Order by ID (for retrieving order details after payment)
+// Get Order by ID
 app.get('/api/orders/:orderId', async (req, res) => {
     try {
         const { orderId } = req.params;
         const result = await pool.query('SELECT * FROM orders WHERE order_id = $1', [orderId]);
-        
+
         if (result.rows.length === 0) {
             return res.status(404).json({ error: 'Order not found' });
         }
-        
+
         res.json(result.rows[0]);
     } catch (error) {
         console.error('Get order error:', error);
@@ -287,12 +256,12 @@ app.get('/api/orders', async (req, res) => {
     }
 });
 
-// Update Order Status (for Admin)
+// Update Order Status
 app.put('/api/orders/:orderId/status', authenticateToken, async (req, res) => {
     try {
         const { orderId } = req.params;
         const { status } = req.body;
-        
+
         await pool.query('UPDATE orders SET status = $1, updated_at = NOW() WHERE order_id = $2', [status, orderId]);
         res.json({ success: true });
     } catch (error) {
