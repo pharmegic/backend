@@ -14,6 +14,31 @@ const CLICK_CONFIG = {
     merchant_user_id: process.env.CLICK_MERCHANT_USER_ID || '58617'
 };
 
+// Check Payment Status (faqat ma'lumot olish uchun, avtomat emas)
+app.get('/api/orders/check-payment/:orderId', async (req, res) => {
+    try {
+        const { orderId } = req.params;
+        const result = await pool.query(
+            'SELECT payment_status, status, click_trans_id, click_paydoc_id FROM orders WHERE order_id = $1', 
+            [orderId]
+        );
+
+        if (result.rows.length === 0) {
+            return res.status(404).json({ error: 'Order not found' });
+        }
+
+        res.json({
+            payment_status: result.rows[0].payment_status,
+            order_status: result.rows[0].status,
+            click_trans_id: result.rows[0].click_trans_id,
+            click_paydoc_id: result.rows[0].click_paydoc_id
+        });
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+
 // CORS
 app.use(cors({
     origin: '*',
@@ -277,6 +302,10 @@ app.get('/api/orders', async (req, res) => {
         res.status(500).json({ error: error.message });
     }
 });
+
+
+
+
 
 // 404 handler
 app.use((req, res) => {
