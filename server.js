@@ -10,7 +10,7 @@ const PORT = process.env.PORT || 8080;
 const CLICK_CONFIG = {
     service_id: process.env.CLICK_SERVICE_ID || '76696',
     merchant_id: process.env.CLICK_MERCHANT_ID || '41995',
-    secret_key: process.env.CLICK_SECRET_KEY || 'Lpphf17Hmokk3YmFG',
+    secret_key: process.env.CLICK_SECRET_KEY || 'YOUR_SECRET_KEY',
     merchant_user_id: process.env.CLICK_MERCHANT_USER_ID || '58617'
 };
 
@@ -25,12 +25,6 @@ app.use(cors({
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
-// Request logging
-app.use((req, res, next) => {
-    console.log(`[${new Date().toISOString()}] ${req.method} ${req.path}`);
-    next();
-});
-
 // Database Connection
 const pool = new Pool({
     connectionString: process.env.DATABASE_URL,
@@ -38,23 +32,14 @@ const pool = new Pool({
 });
 
 // ============================================
-// DATABASE INIT - DROP AND RECREATE
+// DATABASE INIT
 // ============================================
 async function initDB() {
     try {
         console.log('🔄 Checking database...');
 
-        // Avvalgi jadvalni o'chirish (agar mavjud bo'lsa)
-        try {
-            await pool.query('DROP TABLE IF EXISTS orders CASCADE');
-            console.log('✅ Old table dropped');
-        } catch (e) {
-            console.log('ℹ️ No old table to drop');
-        }
-
-        // Yangi jadval yaratish
         await pool.query(`
-            CREATE TABLE orders (
+            CREATE TABLE IF NOT EXISTS orders (
                 id SERIAL PRIMARY KEY,
                 order_id VARCHAR(255) UNIQUE NOT NULL,
                 customer_name VARCHAR(255),
@@ -68,7 +53,8 @@ async function initDB() {
                 payment_status VARCHAR(50) DEFAULT 'pending',
                 click_trans_id VARCHAR(255),
                 click_paydoc_id VARCHAR(255),
-                status VARCHAR(50) DEFAULT 'pending_payment',
+                status VARCHAR(50) DEFAULT 'new',
+                admin_approved BOOLEAN DEFAULT false,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
@@ -82,24 +68,6 @@ async function initDB() {
     }
 }
 
-// ============================================
-// ROUTES
-// ============================================
-
-// Health check
-app.get('/', (req, res) => {
-    res.json({ 
-        status: 'OK', 
-        message: 'PHARMEGIC API is running',
-        timestamp: new Date().toISOString()
-    });
-});
-
-// Test
-app.get('/test', (req, res) => {
-    res.json({ cors: 'working', origin: req.headers.origin });
-});
-
 // Generate Click Signature
 function generateClickSignature(params, secretKey) {
     const signString = `${params.service_id}${params.amount}${params.transaction_param}${secretKey}`;
@@ -107,73 +75,76 @@ function generateClickSignature(params, secretKey) {
 }
 
 // ============================================
-// CREATE ORDER
+// CREATE ORDER - NEW FLOW (Admin tasdiqlashi bilan)
 // ============================================
 app.post('/api/orders/create-with-payment', async (req, res) => {
     console.log('\n📥 Create order request:', req.body);
 
     try {
-        const { customerName, phone, address, comment, items, total } = req.body;
+        const { customerName, phone, address, comment, items, total, userType, companyData } = req.body;
 
-        // Validation
         if (!customerName || !phone || !total) {
             return res.status(400).json({ 
-                error: 'Missing required fields',
-                fields: { customerName: !!customerName, phone: !!phone, total: !!total }
+                error: 'Missing required fields'
             });
         }
 
         const orderId = 'PH-' + Date.now();
         console.log('🆔 Order ID:', orderId);
 
-        // Insert to database
-        console.log('📝 Inserting to database...');
+        // Order ma'lumotlarini bazaga saqlash (status: new - admin tasdiqlashini kutadi)
+        const isLegal = userType === 'legal';
         const result = await pool.query(`
-            INSERT INTO orders (order_id, customer_name, customer_type, phone, address, comment, items, total, payment_method, status)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+            INSERT INTO orders (
+                order_id, customer_name, customer_type, phone, address, 
+                comment, items, total, payment_method, status, admin_approved
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
             RETURNING *
         `, [
             orderId, 
             customerName, 
-            'individual', 
+            userType || 'individual', 
             phone, 
             address || '', 
             comment || '', 
             JSON.stringify(items || []), 
             parseFloat(total), 
-            'Click', 
-            'pending_payment'
+            isLegal ? 'Bank transfer (Contract)' : 'Click', 
+            'new',  // Yangi status - admin tasdiqlashini kutadi
+            false   // Admin hali tasdiqlamagan
         ]);
 
-        console.log('✅ Database insert successful:', result.rows[0].order_id);
+        console.log('✅ Order created with status: NEW (waiting for admin approval)');
 
-        // Generate Click URL
-        const returnUrl = `https://pharmegic.uz?payment=success&order_id=${orderId}`;
-        const signature = generateClickSignature({
-            service_id: CLICK_CONFIG.service_id,
-            amount: total,
-            transaction_param: orderId
-        }, CLICK_CONFIG.secret_key);
+        // Click to'lov URL yaratish (faqat jismoniy shaxslar uchun)
+        let paymentUrl = null;
+        if (!isLegal) {
+            const returnUrl = `https://pharmegic.uz?payment=return&order_id=${orderId}`;
+            const signature = generateClickSignature({
+                service_id: CLICK_CONFIG.service_id,
+                amount: total,
+                transaction_param: orderId
+            }, CLICK_CONFIG.secret_key);
 
-        const paymentUrl = `https://my.click.uz/services/pay?` +
-            `service_id=${CLICK_CONFIG.service_id}&` +
-            `merchant_id=${CLICK_CONFIG.merchant_id}&` +
-            `amount=${total}&` +
-            `transaction_param=${orderId}&` +
-            `return_url=${encodeURIComponent(returnUrl)}&` +
-            `signature=${signature}`;
-
-        console.log('✅ Order created successfully');
+            paymentUrl = `https://my.click.uz/services/pay?` +
+                `service_id=${CLICK_CONFIG.service_id}&` +
+                `merchant_id=${CLICK_CONFIG.merchant_id}&` +
+                `amount=${total}&` +
+                `transaction_param=${orderId}&` +
+                `return_url=${encodeURIComponent(returnUrl)}&` +
+                `signature=${signature}`;
+        }
 
         res.json({
             success: true,
             order_id: orderId,
-            payment_url: paymentUrl
+            status: 'new',
+            message: 'Buyurtma yaratildi. Admin tasdiqlashini kutmoqda.',
+            payment_url: paymentUrl  // Agar legal bo'lsa null bo'ladi
         });
 
     } catch (error) {
         console.error('\n❌ Error:', error.message);
-        console.error('Stack:', error.stack);
         res.status(500).json({ 
             error: 'Internal server error', 
             details: error.message
@@ -181,36 +152,50 @@ app.post('/api/orders/create-with-payment', async (req, res) => {
     }
 });
 
-// Click Prepare
-app.post('/api/payment/click/prepare', async (req, res) => {
-    console.log('📥 Click Prepare:', req.body);
+// ============================================
+// ADMIN APPROVAL ROUTES
+// ============================================
+
+// Buyurtmani tasdiqlash (Admin)
+app.post('/api/orders/:orderId/approve', async (req, res) => {
     try {
-        const { click_trans_id, merchant_trans_id, amount } = req.body;
+        const { orderId } = req.params;
+        
+        await pool.query(
+            `UPDATE orders SET status = $1, admin_approved = $2, updated_at = CURRENT_TIMESTAMP 
+             WHERE order_id = $3`,
+            ['approved', true, orderId]
+        );
 
-        const orderResult = await pool.query('SELECT * FROM orders WHERE order_id = $1', [merchant_trans_id]);
-        if (orderResult.rows.length === 0) {
-            return res.json({ error: -5, error_note: 'Order not found' });
-        }
-
-        const order = orderResult.rows[0];
-        if (parseFloat(order.total) !== parseFloat(amount)) {
-            return res.json({ error: -2, error_note: 'Amount mismatch' });
-        }
-
-        res.json({
-            click_trans_id: click_trans_id,
-            merchant_trans_id: merchant_trans_id,
-            merchant_prepare_id: Date.now(),
-            error: 0,
-            error_note: 'Success'
-        });
+        console.log(`✅ Order ${orderId} approved by admin`);
+        res.json({ success: true, message: 'Buyurtma tasdiqlandi' });
     } catch (error) {
-        console.error('❌ Prepare error:', error.message);
-        res.json({ error: -3, error_note: 'Server error' });
+        console.error('❌ Approve error:', error.message);
+        res.status(500).json({ error: error.message });
     }
 });
 
-// Click Complete
+// Buyurtmani rad etish (Admin)
+app.post('/api/orders/:orderId/reject', async (req, res) => {
+    try {
+        const { orderId } = req.params;
+        const { reason } = req.body;
+        
+        await pool.query(
+            `UPDATE orders SET status = $1, admin_approved = $2, updated_at = CURRENT_TIMESTAMP 
+             WHERE order_id = $3`,
+            ['rejected', false, orderId]
+        );
+
+        console.log(`❌ Order ${orderId} rejected by admin`);
+        res.json({ success: true, message: 'Buyurtma rad etildi', reason });
+    } catch (error) {
+        console.error('❌ Reject error:', error.message);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// Click API integratsiyasi (faqat to'lov ma'lumotlarini saqlash)
 app.post('/api/payment/click/complete', async (req, res) => {
     console.log('📥 Click Complete:', req.body);
     try {
@@ -218,15 +203,17 @@ app.post('/api/payment/click/complete', async (req, res) => {
 
         if (parseInt(clickError) < 0) {
             await pool.query(
-                'UPDATE orders SET payment_status = $1, status = $2 WHERE order_id = $3',
-                ['failed', 'cancelled', merchant_trans_id]
+                'UPDATE orders SET payment_status = $1 WHERE order_id = $2',
+                ['failed', merchant_trans_id]
             );
             return res.json({ error: 0, error_note: 'Success' });
         }
 
+        // To'lov ma'lumotlarini saqlash (lekin statusni avtomat o'zgartirmaydi)
         await pool.query(
-            'UPDATE orders SET payment_status = $1, status = $2, click_trans_id = $3, click_paydoc_id = $4 WHERE order_id = $5',
-            ['paid', 'new', click_trans_id, click_paydoc_id, merchant_trans_id]
+            `UPDATE orders SET payment_status = $1, click_trans_id = $2, click_paydoc_id = $3 
+             WHERE order_id = $4`,
+            ['paid', click_trans_id, click_paydoc_id, merchant_trans_id]
         );
 
         res.json({
@@ -242,27 +229,6 @@ app.post('/api/payment/click/complete', async (req, res) => {
     }
 });
 
-// Check Payment Status
-app.get('/api/orders/check-payment/:orderId', async (req, res) => {
-    try {
-        const { orderId } = req.params;
-        const result = await pool.query('SELECT payment_status, status, click_trans_id, click_paydoc_id FROM orders WHERE order_id = $1', [orderId]);
-
-        if (result.rows.length === 0) {
-            return res.status(404).json({ error: 'Order not found' });
-        }
-
-        res.json({
-            payment_status: result.rows[0].payment_status,
-            order_status: result.rows[0].status,
-            click_trans_id: result.rows[0].click_trans_id,
-            click_paydoc_id: result.rows[0].click_paydoc_id
-        });
-    } catch (error) {
-        res.status(500).json({ error: error.message });
-    }
-});
-
 // Get All Orders
 app.get('/api/orders', async (req, res) => {
     try {
@@ -275,13 +241,7 @@ app.get('/api/orders', async (req, res) => {
 
 // 404 handler
 app.use((req, res) => {
-    res.status(404).json({ error: 'Not found', path: req.path });
-});
-
-// Error handler
-app.use((err, req, res, next) => {
-    console.error('❌ Error:', err.message);
-    res.status(500).json({ error: 'Internal server error', details: err.message });
+    res.status(404).json({ error: 'Not found' });
 });
 
 // Start
