@@ -38,29 +38,68 @@ async function initDB() {
     try {
         console.log('🔄 Checking database...');
 
-        await pool.query(`
-            CREATE TABLE IF NOT EXISTS orders (
-                id SERIAL PRIMARY KEY,
-                order_id VARCHAR(255) UNIQUE NOT NULL,
-                customer_name VARCHAR(255),
-                customer_type VARCHAR(50),
-                phone VARCHAR(50),
-                address TEXT,
-                comment TEXT,
-                items JSONB,
-                total DECIMAL(10,2),
-                payment_method VARCHAR(50),
-                payment_status VARCHAR(50) DEFAULT 'pending',
-                click_trans_id VARCHAR(255),
-                click_paydoc_id VARCHAR(255),
-                status VARCHAR(50) DEFAULT 'new',
-                admin_approved BOOLEAN DEFAULT false,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            )
+        // Check if table exists
+        const tableCheck = await pool.query(`
+            SELECT EXISTS (
+                SELECT FROM information_schema.tables 
+                WHERE table_name = 'orders'
+            );
         `);
+        
+        const tableExists = tableCheck.rows[0].exists;
+        
+        if (tableExists) {
+            // Check if admin_approved column exists
+            const columnCheck = await pool.query(`
+                SELECT EXISTS (
+                    SELECT FROM information_schema.columns 
+                    WHERE table_name = 'orders' AND column_name = 'admin_approved'
+                );
+            `);
+            
+            if (!columnCheck.rows[0].exists) {
+                console.log('🔄 Adding missing column admin_approved...');
+                await pool.query(`
+                    ALTER TABLE orders 
+                    ADD COLUMN admin_approved BOOLEAN DEFAULT false
+                `);
+                console.log('✅ Column added');
+            }
+            
+            // Check if status column is wide enough
+            await pool.query(`
+                ALTER TABLE orders 
+                ALTER COLUMN status TYPE VARCHAR(50)
+            `);
+            
+            console.log('✅ Database updated successfully');
+            
+        } else {
+            // Create new table with all columns
+            await pool.query(`
+                CREATE TABLE orders (
+                    id SERIAL PRIMARY KEY,
+                    order_id VARCHAR(255) UNIQUE NOT NULL,
+                    customer_name VARCHAR(255),
+                    customer_type VARCHAR(50),
+                    phone VARCHAR(50),
+                    address TEXT,
+                    comment TEXT,
+                    items JSONB,
+                    total DECIMAL(10,2),
+                    payment_method VARCHAR(50),
+                    payment_status VARCHAR(50) DEFAULT 'pending',
+                    click_trans_id VARCHAR(255),
+                    click_paydoc_id VARCHAR(255),
+                    status VARCHAR(50) DEFAULT 'new',
+                    admin_approved BOOLEAN DEFAULT false,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            `);
+            console.log('✅ New table created');
+        }
 
-        console.log('✅ Database initialized successfully');
         return true;
     } catch (error) {
         console.error('❌ Database init error:', error.message);
