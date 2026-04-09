@@ -34,11 +34,37 @@ const pool = new Pool({
 // ============================================
 // DATABASE INIT
 // ============================================
+// ============================================
+// DATABASE INIT - TO'G'RILANGAN
+// ============================================
 async function initDB() {
     try {
         console.log('🔄 Checking database...');
 
-        // Check if orders table exists
+        // Products jadvalini butunlay o'chirib, to'g'ri yaratish
+        await pool.query(`
+            DROP TABLE IF EXISTS products CASCADE;
+            
+            CREATE TABLE products (
+                id BIGINT PRIMARY KEY,
+                name_uz VARCHAR(255),
+                name_ru VARCHAR(255),
+                name_en VARCHAR(255),
+                category VARCHAR(50),
+                prices JSONB,
+                min_qty INTEGER,
+                description_uz TEXT,
+                description_ru TEXT,
+                description_en TEXT,
+                image TEXT,
+                status VARCHAR(20) DEFAULT 'active',
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        `);
+        console.log('✅ Products table recreated with all columns');
+
+        // Orders jadvali
         const tableCheck = await pool.query(`
             SELECT EXISTS (
                 SELECT FROM information_schema.tables 
@@ -49,7 +75,6 @@ async function initDB() {
         const tableExists = tableCheck.rows[0].exists;
         
         if (!tableExists) {
-            // Create new table with all columns
             await pool.query(`
                 CREATE TABLE orders (
                     id SERIAL PRIMARY KEY,
@@ -73,45 +98,6 @@ async function initDB() {
             console.log('✅ Orders table created');
         }
 
-        // Ensure all columns exist
-        const columns = [
-            'order_id', 'customer_name', 'customer_type', 'phone', 'address', 
-            'comment', 'items', 'total', 'payment_method', 'payment_status',
-            'click_trans_id', 'click_paydoc_id', 'status', 'created_at', 'updated_at'
-        ];
-        
-        for (const col of columns) {
-            try {
-                await pool.query(`
-                    ALTER TABLE orders 
-                    ADD COLUMN IF NOT EXISTS ${col} VARCHAR(255)
-                `);
-            } catch (e) {
-                // Column might already exist with different type
-            }
-        }
-        
-        // Create products table if not exists
-        await pool.query(`
-            CREATE TABLE IF NOT EXISTS products (
-                id BIGINT PRIMARY KEY,
-                name_uz VARCHAR(255),
-                name_ru VARCHAR(255),
-                name_en VARCHAR(255),
-                category VARCHAR(50),
-                prices JSONB,
-                min_qty INTEGER,
-                description_uz TEXT,
-                description_ru TEXT,
-                description_en TEXT,
-                image TEXT,
-                status VARCHAR(20) DEFAULT 'active',
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            )
-        `);
-        console.log('✅ Products table ready');
-        
         console.log('✅ Database ready');
         return true;
     } catch (error) {
