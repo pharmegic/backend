@@ -14,31 +14,6 @@ const CLICK_CONFIG = {
     merchant_user_id: process.env.CLICK_MERCHANT_USER_ID || '58617'
 };
 
-// Check Payment Status (faqat ma'lumot olish uchun, avtomat emas)
-app.get('/api/orders/check-payment/:orderId', async (req, res) => {
-    try {
-        const { orderId } = req.params;
-        const result = await pool.query(
-            'SELECT payment_status, status, click_trans_id, click_paydoc_id FROM orders WHERE order_id = $1', 
-            [orderId]
-        );
-
-        if (result.rows.length === 0) {
-            return res.status(404).json({ error: 'Order not found' });
-        }
-
-        res.json({
-            payment_status: result.rows[0].payment_status,
-            order_status: result.rows[0].status,
-            click_trans_id: result.rows[0].click_trans_id,
-            click_paydoc_id: result.rows[0].click_paydoc_id
-        });
-    } catch (error) {
-        res.status(500).json({ error: error.message });
-    }
-});
-
-
 // CORS
 app.use(cors({
     origin: '*',
@@ -73,58 +48,50 @@ async function initDB() {
         
         const tableExists = tableCheck.rows[0].exists;
         
-        if (tableExists) {
-            // Check if admin_approved column exists
-            const columnCheck = await pool.query(`
-                SELECT EXISTS (
-                    SELECT FROM information_schema.columns 
-                    WHERE table_name = 'orders' AND column_name = 'admin_approved'
-                );
-            `);
-            
-            if (!columnCheck.rows[0].exists) {
-                console.log('🔄 Adding missing column admin_approved...');
-                await pool.query(`
-                    ALTER TABLE orders 
-                    ADD COLUMN admin_approved BOOLEAN DEFAULT false
-                `);
-                console.log('✅ Column added');
-            }
-            
-            // Check if status column is wide enough
-            await pool.query(`
-                ALTER TABLE orders 
-                ALTER COLUMN status TYPE VARCHAR(50)
-            `);
-            
-            console.log('✅ Database updated successfully');
-            
-        } else {
+        if (!tableExists) {
             // Create new table with all columns
             await pool.query(`
                 CREATE TABLE orders (
                     id SERIAL PRIMARY KEY,
                     order_id VARCHAR(255) UNIQUE NOT NULL,
                     customer_name VARCHAR(255),
-                    customer_type VARCHAR(50),
+                    customer_type VARCHAR(50) DEFAULT 'individual',
                     phone VARCHAR(50),
                     address TEXT,
                     comment TEXT,
                     items JSONB,
                     total DECIMAL(10,2),
-                    payment_method VARCHAR(50),
+                    payment_method VARCHAR(50) DEFAULT 'Click',
                     payment_status VARCHAR(50) DEFAULT 'pending',
                     click_trans_id VARCHAR(255),
                     click_paydoc_id VARCHAR(255),
                     status VARCHAR(50) DEFAULT 'new',
-                    admin_approved BOOLEAN DEFAULT false,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 )
             `);
-            console.log('✅ New table created');
+            console.log('✅ Orders table created');
         }
 
+        // Ensure all columns exist
+        const columns = [
+            'order_id', 'customer_name', 'customer_type', 'phone', 'address', 
+            'comment', 'items', 'total', 'payment_method', 'payment_status',
+            'click_trans_id', 'click_paydoc_id', 'status', 'created_at', 'updated_at'
+        ];
+        
+        for (const col of columns) {
+            try {
+                await pool.query(`
+                    ALTER TABLE orders 
+                    ADD COLUMN IF NOT EXISTS ${col} VARCHAR(255)
+                `);
+            } catch (e) {
+                // Column might already exist with different type
+            }
+        }
+        
+        console.log('✅ Database ready');
         return true;
     } catch (error) {
         console.error('❌ Database init error:', error.message);
@@ -139,48 +106,51 @@ function generateClickSignature(params, secretKey) {
 }
 
 // ============================================
-// CREATE ORDER - NEW FLOW (Admin tasdiqlashi bilan)
+// CREATE ORDER - HAMMA UCHUN (Jismoniy va Yuridik)
 // ============================================
 app.post('/api/orders/create-with-payment', async (req, res) => {
-    console.log('\n📥 Create order request:', req.body);
+    console.log('\\n📥 Create order request:', req.body);
 
     try {
-        const { customerName, phone, address, comment, items, total, userType, companyData } = req.body;
+        const { customerName, phone, address, comment, items, total, userType } = req.body;
 
-        if (!customerName || !phone || !total) {
+        if (!customerName || !phone || !total || !items) {
             return res.status(400).json({ 
-                error: 'Missing required fields'
+                error: 'Missing required fields',
+                required: ['customerName', 'phone', 'total', 'items']
             });
         }
 
         const orderId = 'PH-' + Date.now();
         console.log('🆔 Order ID:', orderId);
+        console.log('👤 User Type:', userType || 'individual');
 
-        // Order ma'lumotlarini bazaga saqlash (status: new - admin tasdiqlashini kutadi)
         const isLegal = userType === 'legal';
+        
+        // Order ma'lumotlarini bazaga saqlash
         const result = await pool.query(`
             INSERT INTO orders (
                 order_id, customer_name, customer_type, phone, address, 
-                comment, items, total, payment_method, status, admin_approved
-            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+                comment, items, total, payment_method, status, created_at
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, CURRENT_TIMESTAMP)
             RETURNING *
         `, [
             orderId, 
             customerName, 
-            userType || 'individual', 
+            isLegal ? 'legal' : 'individual',  // ✅ Jismoniy shaxslar ham 'individual' sifatida saqlanadi
             phone, 
             address || '', 
             comment || '', 
-            JSON.stringify(items || []), 
+            JSON.stringify(items), 
             parseFloat(total), 
             isLegal ? 'Bank transfer (Contract)' : 'Click', 
-            'new',  // Yangi status - admin tasdiqlashini kutadi
-            false   // Admin hali tasdiqlamagan
+            'new'  // Yangi status
         ]);
 
-        console.log('✅ Order created with status: NEW (waiting for admin approval)');
+        console.log('✅ Order saved to database:', result.rows[0].order_id);
+        console.log('   Customer Type:', result.rows[0].customer_type);
 
-        // Click to'lov URL yaratish (faqat jismoniy shaxslar uchun)
+        // Click to'lov URL (faqat jismoniy shaxslar uchun)
         let paymentUrl = null;
         if (!isLegal) {
             const returnUrl = `https://pharmegic.uz?payment=return&order_id=${orderId}`;
@@ -203,12 +173,13 @@ app.post('/api/orders/create-with-payment', async (req, res) => {
             success: true,
             order_id: orderId,
             status: 'new',
-            message: 'Buyurtma yaratildi. Admin tasdiqlashini kutmoqda.',
-            payment_url: paymentUrl  // Agar legal bo'lsa null bo'ladi
+            customer_type: isLegal ? 'legal' : 'individual',
+            message: 'Buyurtma yaratildi',
+            payment_url: paymentUrl
         });
 
     } catch (error) {
-        console.error('\n❌ Error:', error.message);
+        console.error('\\n❌ Error:', error.message);
         res.status(500).json({ 
             error: 'Internal server error', 
             details: error.message
@@ -217,49 +188,102 @@ app.post('/api/orders/create-with-payment', async (req, res) => {
 });
 
 // ============================================
-// ADMIN APPROVAL ROUTES
+// ADMIN APPROVAL - Faqat 1 marta qabul qilish
 // ============================================
-
-// Buyurtmani tasdiqlash (Admin)
 app.post('/api/orders/:orderId/approve', async (req, res) => {
     try {
         const { orderId } = req.params;
         
-        await pool.query(
-            `UPDATE orders SET status = $1, admin_approved = $2, updated_at = CURRENT_TIMESTAMP 
-             WHERE order_id = $3`,
-            ['approved', true, orderId]
+        const result = await pool.query(
+            `UPDATE orders SET status = $1, updated_at = CURRENT_TIMESTAMP 
+             WHERE order_id = $2
+             RETURNING *`,
+            ['completed', orderId]
         );
 
-        console.log(`✅ Order ${orderId} approved by admin`);
-        res.json({ success: true, message: 'Buyurtma tasdiqlandi' });
+        if (result.rowCount === 0) {
+            return res.status(404).json({ error: 'Order not found' });
+        }
+
+        console.log(`✅ Order ${orderId} approved (completed)`);
+        res.json({ 
+            success: true, 
+            message: 'Buyurtma qabul qilindi',
+            order: result.rows[0]
+        });
     } catch (error) {
         console.error('❌ Approve error:', error.message);
         res.status(500).json({ error: error.message });
     }
 });
 
-// Buyurtmani rad etish (Admin)
+// Buyurtmani bekor qilish
 app.post('/api/orders/:orderId/reject', async (req, res) => {
     try {
         const { orderId } = req.params;
-        const { reason } = req.body;
         
-        await pool.query(
-            `UPDATE orders SET status = $1, admin_approved = $2, updated_at = CURRENT_TIMESTAMP 
-             WHERE order_id = $3`,
-            ['rejected', false, orderId]
+        const result = await pool.query(
+            `UPDATE orders SET status = $1, updated_at = CURRENT_TIMESTAMP 
+             WHERE order_id = $2
+             RETURNING *`,
+            ['cancelled', orderId]
         );
 
-        console.log(`❌ Order ${orderId} rejected by admin`);
-        res.json({ success: true, message: 'Buyurtma rad etildi', reason });
+        if (result.rowCount === 0) {
+            return res.status(404).json({ error: 'Order not found' });
+        }
+
+        console.log(`❌ Order ${orderId} cancelled`);
+        res.json({ 
+            success: true, 
+            message: 'Buyurtma bekor qilindi',
+            order: result.rows[0]
+        });
     } catch (error) {
         console.error('❌ Reject error:', error.message);
         res.status(500).json({ error: error.message });
     }
 });
 
-// Click API integratsiyasi (faqat to'lov ma'lumotlarini saqlash)
+// ============================================
+// CLICK API INTEGRATION
+// ============================================
+
+// Prepare
+app.get('/api/payment/click/prepare', async (req, res) => {
+    console.log('📥 Click Prepare:', req.query);
+    try {
+        const { merchant_trans_id, amount, click_trans_id } = req.query;
+        
+        const result = await pool.query(
+            'SELECT * FROM orders WHERE order_id = $1',
+            [merchant_trans_id]
+        );
+
+        if (result.rows.length === 0) {
+            return res.json({ error: -5, error_note: 'Order not found' });
+        }
+
+        const order = result.rows[0];
+        
+        if (parseFloat(order.total) !== parseFloat(amount)) {
+            return res.json({ error: -2, error_note: 'Invalid amount' });
+        }
+
+        res.json({
+            click_trans_id: click_trans_id,
+            merchant_trans_id: merchant_trans_id,
+            merchant_prepare_id: Date.now(),
+            error: 0,
+            error_note: 'Success'
+        });
+    } catch (error) {
+        console.error('❌ Prepare error:', error.message);
+        res.json({ error: -3, error_note: 'Server error' });
+    }
+});
+
+// Complete
 app.post('/api/payment/click/complete', async (req, res) => {
     console.log('📥 Click Complete:', req.body);
     try {
@@ -273,12 +297,14 @@ app.post('/api/payment/click/complete', async (req, res) => {
             return res.json({ error: 0, error_note: 'Success' });
         }
 
-        // To'lov ma'lumotlarini saqlash (lekin statusni avtomat o'zgartirmaydi)
+        // To'lov ma'lumotlarini saqlash (status avtomat o'zgarmaydi, admin qabul qiladi)
         await pool.query(
             `UPDATE orders SET payment_status = $1, click_trans_id = $2, click_paydoc_id = $3 
              WHERE order_id = $4`,
             ['paid', click_trans_id, click_paydoc_id, merchant_trans_id]
         );
+
+        console.log(`💰 Payment completed for ${merchant_trans_id}`);
 
         res.json({
             click_trans_id: click_trans_id,
@@ -293,19 +319,65 @@ app.post('/api/payment/click/complete', async (req, res) => {
     }
 });
 
-// Get All Orders
+// ============================================
+// GET ORDERS - Real-time uchun
+// ============================================
 app.get('/api/orders', async (req, res) => {
     try {
-        const result = await pool.query('SELECT * FROM orders ORDER BY created_at DESC');
+        const result = await pool.query(
+            'SELECT * FROM orders ORDER BY created_at DESC'
+        );
+        
+        console.log(`📤 Sending ${result.rows.length} orders`);
         res.json(result.rows);
+    } catch (error) {
+        console.error('❌ Get orders error:', error.message);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// Get single order
+app.get('/api/orders/:orderId', async (req, res) => {
+    try {
+        const { orderId } = req.params;
+        const result = await pool.query(
+            'SELECT * FROM orders WHERE order_id = $1',
+            [orderId]
+        );
+
+        if (result.rows.length === 0) {
+            return res.status(404).json({ error: 'Order not found' });
+        }
+
+        res.json(result.rows[0]);
     } catch (error) {
         res.status(500).json({ error: error.message });
     }
 });
 
+// Check Payment Status
+app.get('/api/orders/check-payment/:orderId', async (req, res) => {
+    try {
+        const { orderId } = req.params;
+        const result = await pool.query(
+            'SELECT payment_status, status, click_trans_id, click_paydoc_id FROM orders WHERE order_id = $1', 
+            [orderId]
+        );
 
+        if (result.rows.length === 0) {
+            return res.status(404).json({ error: 'Order not found' });
+        }
 
-
+        res.json({
+            payment_status: result.rows[0].payment_status,
+            order_status: result.rows[0].status,
+            click_trans_id: result.rows[0].click_trans_id,
+            click_paydoc_id: result.rows[0].click_paydoc_id
+        });
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
 
 // 404 handler
 app.use((req, res) => {
@@ -317,6 +389,7 @@ async function start() {
     await initDB();
     app.listen(PORT, '0.0.0.0', () => {
         console.log(`✅ Server running on port ${PORT}`);
+        console.log(`📊 Admin panel: https://backend-production-c4f9.up.railway.app`);
     });
 }
 
