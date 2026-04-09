@@ -470,11 +470,32 @@ app.post('/api/products', async (req, res) => {
 app.put('/api/products/:id', async (req, res) => {
     try {
         const { id } = req.params;
-        const { nameUz, nameRu, nameEn, category, prices, minQty, 
-                descriptionUz, descriptionRu, descriptionEn, image, status } = req.body;
+        const { 
+            nameUz, nameRu, nameEn, category, prices, minQty, 
+            descriptionUz, descriptionRu, descriptionEn, image, status 
+        } = req.body;
         
-        const result = await pool.query(`
-            UPDATE products SET
+        // ID ni tekshirish
+        const productId = parseInt(id);
+        if (isNaN(productId)) {
+            return res.status(400).json({ error: 'Invalid product ID' });
+        }
+        
+        console.log(`📝 Updating product ${productId}`);
+        
+        // Avval mahsulot mavjudligini tekshirish
+        const checkResult = await pool.query(
+            'SELECT id FROM products WHERE id = $1',
+            [productId]
+        );
+        
+        if (checkResult.rowCount === 0) {
+            return res.status(404).json({ error: 'Product not found' });
+        }
+        
+        // UPDATE so'rovi - to'g'ri parameter binding
+        const result = await pool.query(
+            `UPDATE products SET
                 name_uz = $1,
                 name_ru = $2,
                 name_en = $3,
@@ -488,19 +509,36 @@ app.put('/api/products/:id', async (req, res) => {
                 status = $11,
                 updated_at = CURRENT_TIMESTAMP
             WHERE id = $12
-            RETURNING *
-        `, [nameUz, nameRu, nameEn, category, JSON.stringify(prices), minQty,
-            descriptionUz, descriptionRu, descriptionEn, image, status, id]);
+            RETURNING *`,
+            [
+                nameUz || '',
+                nameRu || '',
+                nameEn || '',
+                category || 'other',
+                JSON.stringify(prices || { retail: 0, wholesale: 0 }),
+                parseInt(minQty) || 1,
+                descriptionUz || '',
+                descriptionRu || '',
+                descriptionEn || '',
+                image || '',
+                status || 'active',
+                productId
+            ]
+        );
         
-        if (result.rowCount === 0) {
-            return res.status(404).json({ error: 'Product not found' });
-        }
+        console.log(`✅ Product ${productId} updated`);
+        res.json({ 
+            success: true, 
+            message: 'Product updated',
+            product: result.rows[0] 
+        });
         
-        console.log(`✅ Product ${id} updated via PUT`);
-        res.json({ success: true, product: result.rows[0] });
     } catch (error) {
-        console.error('❌ Update product error:', error.message);
-        res.status(500).json({ error: error.message });
+        console.error('❌ Update error:', error.message);
+        res.status(500).json({ 
+            error: 'Internal server error',
+            details: error.message 
+        });
     }
 });
 
