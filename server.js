@@ -379,6 +379,124 @@ app.get('/api/orders/check-payment/:orderId', async (req, res) => {
     }
 });
 
+
+
+app.get('/api/products', async (req, res) => {
+    try {
+        // Agar products jadvali bo'lmasa, vaqtinchalik localStorage dan olish
+        // Yoki yangi jadval yaratish
+        const result = await pool.query(`
+            SELECT EXISTS (
+                SELECT FROM information_schema.tables 
+                WHERE table_name = 'products'
+            );
+        `);
+        
+        const tableExists = result.rows[0].exists;
+        
+        if (!tableExists) {
+            // Vaqtinchalik bo'sh massiv qaytarish
+            return res.json([]);
+        }
+        
+        const products = await pool.query('SELECT * FROM products ORDER BY id');
+        res.json(products.rows);
+    } catch (error) {
+        console.error('❌ Get products error:', error.message);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// Yangi mahsulot qo'shish
+app.post('/api/products', async (req, res) => {
+    try {
+        const { id, nameUz, nameRu, nameEn, category, prices, minQty, 
+                descriptionUz, descriptionRu, descriptionEn, image, status } = req.body;
+        
+        // Products jadvalini tekshirish/yaratish
+        await pool.query(`
+            CREATE TABLE IF NOT EXISTS products (
+                id BIGINT PRIMARY KEY,
+                name_uz VARCHAR(255),
+                name_ru VARCHAR(255),
+                name_en VARCHAR(255),
+                category VARCHAR(50),
+                prices JSONB,
+                min_qty INTEGER,
+                description_uz TEXT,
+                description_ru TEXT,
+                description_en TEXT,
+                image TEXT,
+                status VARCHAR(20) DEFAULT 'active',
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        `);
+        
+        const result = await pool.query(`
+            INSERT INTO products (id, name_uz, name_ru, name_en, category, prices, 
+                min_qty, description_uz, description_ru, description_en, image, status)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+            ON CONFLICT (id) DO UPDATE SET
+                name_uz = EXCLUDED.name_uz,
+                name_ru = EXCLUDED.name_ru,
+                name_en = EXCLUDED.name_en,
+                category = EXCLUDED.category,
+                prices = EXCLUDED.prices,
+                min_qty = EXCLUDED.min_qty,
+                description_uz = EXCLUDED.description_uz,
+                description_ru = EXCLUDED.description_ru,
+                description_en = EXCLUDED.description_en,
+                image = EXCLUDED.image,
+                status = EXCLUDED.status,
+                updated_at = CURRENT_TIMESTAMP
+            RETURNING *
+        `, [id, nameUz, nameRu, nameEn, category, JSON.stringify(prices), minQty,
+            descriptionUz, descriptionRu, descriptionEn, image, status]);
+        
+        res.json({ success: true, product: result.rows[0] });
+    } catch (error) {
+        console.error('❌ Save product error:', error.message);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// Mahsulotni o'chirish
+app.delete('/api/products/:id', async (req, res) => {
+    try {
+        const { id } = req.params;
+        await pool.query('DELETE FROM products WHERE id = $1', [id]);
+        res.json({ success: true });
+    } catch (error) {
+        console.error('❌ Delete product error:', error.message);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// Status yangilash
+app.patch('/api/products/:id/status', async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { status } = req.body;
+        
+        const result = await pool.query(`
+            UPDATE products SET status = $1, updated_at = CURRENT_TIMESTAMP 
+            WHERE id = $2 RETURNING *
+        `, [status, id]);
+        
+        if (result.rowCount === 0) {
+            return res.status(404).json({ error: 'Product not found' });
+        }
+        
+        res.json({ success: true, product: result.rows[0] });
+    } catch (error) {
+        console.error('❌ Update status error:', error.message);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+
+
 // 404 handler
 app.use((req, res) => {
     res.status(404).json({ error: 'Not found' });
