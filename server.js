@@ -17,7 +17,7 @@ const CLICK_CONFIG = {
 // CORS
 app.use(cors({
     origin: '*',
-    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
     allowedHeaders: ['Content-Type', 'Accept', 'Authorization', 'Origin'],
     credentials: false
 }));
@@ -38,7 +38,7 @@ async function initDB() {
     try {
         console.log('🔄 Checking database...');
 
-        // Check if table exists
+        // Check if orders table exists
         const tableCheck = await pool.query(`
             SELECT EXISTS (
                 SELECT FROM information_schema.tables 
@@ -91,6 +91,27 @@ async function initDB() {
             }
         }
         
+        // Create products table if not exists
+        await pool.query(`
+            CREATE TABLE IF NOT EXISTS products (
+                id BIGINT PRIMARY KEY,
+                name_uz VARCHAR(255),
+                name_ru VARCHAR(255),
+                name_en VARCHAR(255),
+                category VARCHAR(50),
+                prices JSONB,
+                min_qty INTEGER,
+                description_uz TEXT,
+                description_ru TEXT,
+                description_en TEXT,
+                image TEXT,
+                status VARCHAR(20) DEFAULT 'active',
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        `);
+        console.log('✅ Products table ready');
+        
         console.log('✅ Database ready');
         return true;
     } catch (error) {
@@ -137,14 +158,14 @@ app.post('/api/orders/create-with-payment', async (req, res) => {
         `, [
             orderId, 
             customerName, 
-            isLegal ? 'legal' : 'individual',  // ✅ Jismoniy shaxslar ham 'individual' sifatida saqlanadi
+            isLegal ? 'legal' : 'individual',
             phone, 
             address || '', 
             comment || '', 
             JSON.stringify(items), 
             parseFloat(total), 
             isLegal ? 'Bank transfer (Contract)' : 'Click', 
-            'new'  // Yangi status
+            'new'
         ]);
 
         console.log('✅ Order saved to database:', result.rows[0].order_id);
@@ -297,7 +318,6 @@ app.post('/api/payment/click/complete', async (req, res) => {
             return res.json({ error: 0, error_note: 'Success' });
         }
 
-        // To'lov ma'lumotlarini saqlash (status avtomat o'zgarmaydi, admin qabul qiladi)
         await pool.query(
             `UPDATE orders SET payment_status = $1, click_trans_id = $2, click_paydoc_id = $3 
              WHERE order_id = $4`,
@@ -379,59 +399,43 @@ app.get('/api/orders/check-payment/:orderId', async (req, res) => {
     }
 });
 
+// ============================================
+// PRODUCTS API - BARCHA ENDPOINTLAR
+// ============================================
 
-
+// GET all products
 app.get('/api/products', async (req, res) => {
     try {
-        // Agar products jadvali bo'lmasa, vaqtinchalik localStorage dan olish
-        // Yoki yangi jadval yaratish
-        const result = await pool.query(`
-            SELECT EXISTS (
-                SELECT FROM information_schema.tables 
-                WHERE table_name = 'products'
-            );
-        `);
-        
-        const tableExists = result.rows[0].exists;
-        
-        if (!tableExists) {
-            // Vaqtinchalik bo'sh massiv qaytarish
-            return res.json([]);
-        }
-        
-        const products = await pool.query('SELECT * FROM products ORDER BY id');
-        res.json(products.rows);
+        const result = await pool.query('SELECT * FROM products ORDER BY id');
+        res.json(result.rows);
     } catch (error) {
         console.error('❌ Get products error:', error.message);
         res.status(500).json({ error: error.message });
     }
 });
 
-// Yangi mahsulot qo'shish
+// GET single product
+app.get('/api/products/:id', async (req, res) => {
+    try {
+        const { id } = req.params;
+        const result = await pool.query('SELECT * FROM products WHERE id = $1', [id]);
+        
+        if (result.rows.length === 0) {
+            return res.status(404).json({ error: 'Product not found' });
+        }
+        
+        res.json(result.rows[0]);
+    } catch (error) {
+        console.error('❌ Get product error:', error.message);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// POST new product
 app.post('/api/products', async (req, res) => {
     try {
         const { id, nameUz, nameRu, nameEn, category, prices, minQty, 
                 descriptionUz, descriptionRu, descriptionEn, image, status } = req.body;
-        
-        // Products jadvalini tekshirish/yaratish
-        await pool.query(`
-            CREATE TABLE IF NOT EXISTS products (
-                id BIGINT PRIMARY KEY,
-                name_uz VARCHAR(255),
-                name_ru VARCHAR(255),
-                name_en VARCHAR(255),
-                category VARCHAR(50),
-                prices JSONB,
-                min_qty INTEGER,
-                description_uz TEXT,
-                description_ru TEXT,
-                description_en TEXT,
-                image TEXT,
-                status VARCHAR(20) DEFAULT 'active',
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            )
-        `);
         
         const result = await pool.query(`
             INSERT INTO products (id, name_uz, name_ru, name_en, category, prices, 
@@ -454,6 +458,7 @@ app.post('/api/products', async (req, res) => {
         `, [id, nameUz, nameRu, nameEn, category, JSON.stringify(prices), minQty,
             descriptionUz, descriptionRu, descriptionEn, image, status]);
         
+        console.log(`✅ Product ${id} saved`);
         res.json({ success: true, product: result.rows[0] });
     } catch (error) {
         console.error('❌ Save product error:', error.message);
@@ -461,75 +466,12 @@ app.post('/api/products', async (req, res) => {
     }
 });
 
-// Mahsulotni o'chirish
-app.delete('/api/products/:id', async (req, res) => {
-    try {
-        const { id } = req.params;
-        await pool.query('DELETE FROM products WHERE id = $1', [id]);
-        res.json({ success: true });
-    } catch (error) {
-        console.error('❌ Delete product error:', error.message);
-        res.status(500).json({ error: error.message });
-    }
-});
-
-// Status yangilash
-app.patch('/api/products/:id/status', async (req, res) => {
-    try {
-        const { id } = req.params;
-        const { status } = req.body;
-        
-        const result = await pool.query(`
-            UPDATE products SET status = $1, updated_at = CURRENT_TIMESTAMP 
-            WHERE id = $2 RETURNING *
-        `, [status, id]);
-        
-        if (result.rowCount === 0) {
-            return res.status(404).json({ error: 'Product not found' });
-        }
-        
-        res.json({ success: true, product: result.rows[0] });
-    } catch (error) {
-        console.error('❌ Update status error:', error.message);
-        res.status(500).json({ error: error.message });
-    }
-});
-
-
-
-// 404 handler
-app.use((req, res) => {
-    res.status(404).json({ error: 'Not found' });
-});
-
-// ============================================
-// MAHSULOTLAR - YANGILASH (PUT) - YANGI
-// ============================================
+// PUT update product - BU ENDPOINT YANGI QO'SHILDI
 app.put('/api/products/:id', async (req, res) => {
     try {
         const { id } = req.params;
         const { nameUz, nameRu, nameEn, category, prices, minQty, 
                 descriptionUz, descriptionRu, descriptionEn, image, status } = req.body;
-        
-        // Jadval mavjudligini tekshirish
-        await pool.query(`
-            CREATE TABLE IF NOT EXISTS products (
-                id BIGINT PRIMARY KEY,
-                name_uz VARCHAR(255),
-                name_ru VARCHAR(255),
-                name_en VARCHAR(255),
-                category VARCHAR(50),
-                prices JSONB,
-                min_qty INTEGER,
-                description_uz TEXT,
-                description_ru TEXT,
-                description_en TEXT,
-                image TEXT,
-                status VARCHAR(20) DEFAULT 'active',
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            )
-        `);
         
         const result = await pool.query(`
             UPDATE products SET
@@ -554,7 +496,7 @@ app.put('/api/products/:id', async (req, res) => {
             return res.status(404).json({ error: 'Product not found' });
         }
         
-        console.log(`✅ Product ${id} updated`);
+        console.log(`✅ Product ${id} updated via PUT`);
         res.json({ success: true, product: result.rows[0] });
     } catch (error) {
         console.error('❌ Update product error:', error.message);
@@ -562,7 +504,46 @@ app.put('/api/products/:id', async (req, res) => {
     }
 });
 
+// DELETE product
+app.delete('/api/products/:id', async (req, res) => {
+    try {
+        const { id } = req.params;
+        await pool.query('DELETE FROM products WHERE id = $1', [id]);
+        console.log(`✅ Product ${id} deleted`);
+        res.json({ success: true });
+    } catch (error) {
+        console.error('❌ Delete product error:', error.message);
+        res.status(500).json({ error: error.message });
+    }
+});
 
+// PATCH update status
+app.patch('/api/products/:id/status', async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { status } = req.body;
+        
+        const result = await pool.query(`
+            UPDATE products SET status = $1, updated_at = CURRENT_TIMESTAMP 
+            WHERE id = $2 RETURNING *
+        `, [status, id]);
+        
+        if (result.rowCount === 0) {
+            return res.status(404).json({ error: 'Product not found' });
+        }
+        
+        console.log(`✅ Product ${id} status changed to ${status}`);
+        res.json({ success: true, product: result.rows[0] });
+    } catch (error) {
+        console.error('❌ Update status error:', error.message);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// 404 handler
+app.use((req, res) => {
+    res.status(404).json({ error: 'Not found', path: req.path, method: req.method });
+});
 
 // Start
 async function start() {
