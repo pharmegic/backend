@@ -502,6 +502,68 @@ app.use((req, res) => {
     res.status(404).json({ error: 'Not found' });
 });
 
+// ============================================
+// MAHSULOTLAR - YANGILASH (PUT) - YANGI
+// ============================================
+app.put('/api/products/:id', async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { nameUz, nameRu, nameEn, category, prices, minQty, 
+                descriptionUz, descriptionRu, descriptionEn, image, status } = req.body;
+        
+        // Jadval mavjudligini tekshirish
+        await pool.query(`
+            CREATE TABLE IF NOT EXISTS products (
+                id BIGINT PRIMARY KEY,
+                name_uz VARCHAR(255),
+                name_ru VARCHAR(255),
+                name_en VARCHAR(255),
+                category VARCHAR(50),
+                prices JSONB,
+                min_qty INTEGER,
+                description_uz TEXT,
+                description_ru TEXT,
+                description_en TEXT,
+                image TEXT,
+                status VARCHAR(20) DEFAULT 'active',
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        `);
+        
+        const result = await pool.query(`
+            UPDATE products SET
+                name_uz = $1,
+                name_ru = $2,
+                name_en = $3,
+                category = $4,
+                prices = $5,
+                min_qty = $6,
+                description_uz = $7,
+                description_ru = $8,
+                description_en = $9,
+                image = $10,
+                status = $11,
+                updated_at = CURRENT_TIMESTAMP
+            WHERE id = $12
+            RETURNING *
+        `, [nameUz, nameRu, nameEn, category, JSON.stringify(prices), minQty,
+            descriptionUz, descriptionRu, descriptionEn, image, status, id]);
+        
+        if (result.rowCount === 0) {
+            return res.status(404).json({ error: 'Product not found' });
+        }
+        
+        console.log(`✅ Product ${id} updated`);
+        res.json({ success: true, product: result.rows[0] });
+    } catch (error) {
+        console.error('❌ Update product error:', error.message);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+
+
 // Start
 async function start() {
     await initDB();
