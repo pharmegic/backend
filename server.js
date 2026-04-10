@@ -541,7 +541,7 @@ app.delete('/api/products/:id', async (req, res) => {
     }
 });
 
-// PATCH update status
+// PATCH update status - Faqat status o'zgartirish uchun
 app.patch('/api/products/:id/status', async (req, res) => {
     try {
         const { id } = req.params;
