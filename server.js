@@ -31,50 +31,56 @@ const pool = new Pool({
     ssl: process.env.DATABASE_URL ? { rejectUnauthorized: false } : false
 });
 
-// ============================================
-// DATABASE INIT
-// ============================================
-// ============================================
-// DATABASE INIT - TO'G'RILANGAN
-// ============================================
+
+
 async function initDB() {
     try {
         console.log('🔄 Checking database...');
 
-        // Products jadvalini butunlay o'chirib, to'g'ri yaratish
-        await pool.query(`
-            DROP TABLE IF EXISTS products CASCADE;
-            
-            CREATE TABLE products (
-                id BIGINT PRIMARY KEY,
-                name_uz VARCHAR(255),
-                name_ru VARCHAR(255),
-                name_en VARCHAR(255),
-                category VARCHAR(50),
-                prices JSONB,
-                min_qty INTEGER,
-                description_uz TEXT,
-                description_ru TEXT,
-                description_en TEXT,
-                image TEXT,
-                status VARCHAR(20) DEFAULT 'active',
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            )
-        `);
-        console.log('✅ Products table recreated with all columns');
-
-        // Orders jadvali
+        // Products jadvalini tekshirish
         const tableCheck = await pool.query(`
             SELECT EXISTS (
                 SELECT FROM information_schema.tables 
-                WHERE table_name = 'orders'
+                WHERE table_name = 'products'
             );
         `);
         
         const tableExists = tableCheck.rows[0].exists;
         
         if (!tableExists) {
+            // Products jadvalini yaratish
+            await pool.query(`
+                CREATE TABLE products (
+                    id BIGINT PRIMARY KEY,
+                    name_uz VARCHAR(255),
+                    name_ru VARCHAR(255),
+                    name_en VARCHAR(255),
+                    category VARCHAR(50),
+                    prices JSONB,
+                    min_qty INTEGER,
+                    description_uz TEXT,
+                    description_ru TEXT,
+                    description_en TEXT,
+                    image TEXT,
+                    status VARCHAR(20) DEFAULT 'active',
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            `);
+            console.log('✅ Products table created');
+        }
+
+        // Orders jadvalini tekshirish
+        const ordersTableCheck = await pool.query(`
+            SELECT EXISTS (
+                SELECT FROM information_schema.tables 
+                WHERE table_name = 'orders'
+            );
+        `);
+        
+        const ordersTableExists = ordersTableCheck.rows[0].exists;
+        
+        if (!ordersTableExists) {
             await pool.query(`
                 CREATE TABLE orders (
                     id SERIAL PRIMARY KEY,
@@ -96,6 +102,455 @@ async function initDB() {
                 )
             `);
             console.log('✅ Orders table created');
+        }
+
+        // MAHSULOTLAR BORLIGINI TEKSHIRISH
+        const countResult = await pool.query('SELECT COUNT(*) as count FROM products');
+        const count = parseInt(countResult.rows[0].count);
+        
+        console.log(`📊 Bazada ${count} ta mahsulot bor`);
+        
+        // Agar bo'sh bo'lsa, initial products ni qo'shish
+        if (count === 0) {
+            console.log('📝 Boshlang\'ich mahsulotlarni qo\'shish...');
+            
+            const INITIAL_PRODUCTS = [
+                {
+                    id: 1,
+                    nameRu: "Аэросил 200 (Коллоидал силикон диоксид)",
+                    nameUz: "Aerosil 200 (Kolloidal kremniy dioksid)",
+                    nameEn: "Aerosil 200 (Colloidal silicon dioxide)",
+                    category: "excipient",
+                    image: "https://images.unsplash.com/photo-1607613009820-a29f7bb81c04?w=400&h=300&fit=crop",
+                    prices: { retail: 100, wholesale: 100 },
+                    minQty: 10,
+                    descriptionRu: "Фармацевтический наполнитель для таблеток и капсул.",
+                    descriptionUz: "Tabletalar va kapsulalar uchun farmatsevtik to'ldirgich.",
+                    descriptionEn: "Pharmaceutical excipient for tablets and capsules.",
+                    status: "active"
+                },
+                {
+                    id: 2,
+                    nameRu: "Бензокаин (Анестезин)",
+                    nameUz: "Benzokain (Anestezin)",
+                    nameEn: "Benzocaine (Anesthesin)",
+                    category: "chemical",
+                    image: "https://images.unsplash.com/photo-1587854692152-cbe660dbde88?w=400&h=300&fit=crop",
+                    prices: { retail: 350000, wholesale: 300000 },
+                    minQty: 25,
+                    descriptionRu: "Местный анестетик для медицинских и косметических продуктов.",
+                    descriptionUz: "Tibbiy va kosmetik mahsulotlar uchun mahalliy anestetik.",
+                    descriptionEn: "Topical anesthetic for medical and cosmetic products.",
+                    status: "active"
+                },
+                {
+                    id: 3,
+                    nameRu: "Дифенгидрамин (Димедрол)",
+                    nameUz: "Difengidramin (Dimedrol)",
+                    nameEn: "Diphenhydramine (Dimedrol)",
+                    category: "chemical",
+                    image: "https://images.unsplash.com/photo-1584308666744-24d5c474f2ae?w=400&h=300&fit=crop",
+                    prices: { retail: 625000, wholesale: 550000 },
+                    minQty: 25,
+                    descriptionRu: "Антигистаминное средство для фармацевтического производства.",
+                    descriptionUz: "Farmatsevtika ishlab chiqarish uchun antigistamin vosita.",
+                    descriptionEn: "Antihistamine for pharmaceutical manufacturing.",
+                    status: "active"
+                },
+                {
+                    id: 4,
+                    nameRu: "Диметилсульфоксид",
+                    nameUz: "Dimetilsulfoksid",
+                    nameEn: "Dimethyl sulfoxide (DMSO)",
+                    category: "chemical",
+                    image: "https://images.unsplash.com/photo-1607613009820-a29f7bb81c04?w=400&h=300&fit=crop",
+                    prices: { retail: 150000, wholesale: 90000 },
+                    minQty: 250,
+                    descriptionRu: "Растворитель для фармацевтических препаратов.",
+                    descriptionUz: "Farmatsevtik preparatlar uchun erituvchi.",
+                    descriptionEn: "Solvent for pharmaceutical preparations.",
+                    status: "active"
+                },
+                {
+                    id: 5,
+                    nameRu: "Магния стеарат",
+                    nameUz: "Magniy stearat",
+                    nameEn: "Magnesium stearate",
+                    category: "excipient",
+                    image: "https://images.unsplash.com/photo-1607613009820-a29f7bb81c04?w=400&h=300&fit=crop",
+                    prices: { retail: 75000, wholesale: 75000 },
+                    minQty: 10,
+                    descriptionRu: "Смазывающий агент для производства таблеток.",
+                    descriptionUz: "Tablet ishlab chiqarish uchun yog'lovchi modda.",
+                    descriptionEn: "Lubricant for tablet manufacturing.",
+                    status: "active"
+                },
+                {
+                    id: 6,
+                    nameRu: "Ментол кристаллический",
+                    nameUz: "Mentol kristall",
+                    nameEn: "Menthol crystals",
+                    category: "chemical",
+                    image: "https://images.unsplash.com/photo-1607613009820-a29f7bb81c04?w=400&h=300&fit=crop",
+                    prices: { retail: 350000, wholesale: 300000 },
+                    minQty: 25,
+                    descriptionRu: "Фармацевтический ментол для косметических и фармацевтических применений.",
+                    descriptionUz: "Kosmetik va farmatsevtik qo'llanish uchun farmatsevtik mentol.",
+                    descriptionEn: "Pharmaceutical menthol for cosmetic and pharmaceutical applications.",
+                    status: "active"
+                },
+                {
+                    id: 7,
+                    nameRu: "Микрокристаллическая целлюлоза 101",
+                    nameUz: "Mikrokristallik tsellyuloza 101 (MKTS 101)",
+                    nameEn: "Microcrystalline cellulose 101 (MCC 101)",
+                    category: "excipient",
+                    image: "https://images.unsplash.com/photo-1607613009820-a29f7bb81c04?w=400&h=300&fit=crop",
+                    prices: { retail: 75000, wholesale: 75000 },
+                    minQty: 20,
+                    descriptionRu: "Микрокристаллическая целлюлоза 101 для производства таблеток.",
+                    descriptionUz: "Tablet ishlab chiqarish uchun mikrokristallik tsellyuloza 101.",
+                    descriptionEn: "Microcrystalline cellulose 101 for tablet manufacturing.",
+                    status: "active"
+                },
+                {
+                    id: 8,
+                    nameRu: "Микрокристаллическая целлюлоза 102",
+                    nameUz: "Mikrokristallik tsellyuloza 102 (MKTS 102)",
+                    nameEn: "Microcrystalline cellulose 102 (MCC 102)",
+                    category: "excipient",
+                    image: "https://images.unsplash.com/photo-1607613009820-a29f7bb81c04?w=400&h=300&fit=crop",
+                    prices: { retail: 80000, wholesale: 80000 },
+                    minQty: 20,
+                    descriptionRu: "Микрокристаллическая целлюлоза 102 для производства таблеток.",
+                    descriptionUz: "Tablet ishlab chiqarish uchun mikrokristallik tsellyuloza 102.",
+                    descriptionEn: "Microcrystalline cellulose 102 for tablet manufacturing.",
+                    status: "active"
+                },
+                {
+                    id: 9,
+                    nameRu: "Метилпарабен (Нипагин)",
+                    nameUz: "Metilparaben (Nipagin)",
+                    nameEn: "Methylparaben (Nipagin)",
+                    category: "excipient",
+                    image: "https://images.unsplash.com/photo-1584308666744-24d5c474f2ae?w=400&h=300&fit=crop",
+                    prices: { retail: 350000, wholesale: 300000 },
+                    minQty: 25,
+                    descriptionRu: "Консервант для косметических и фармацевтических продуктов.",
+                    descriptionUz: "Kosmetik va farmatsevtik mahsulotlar uchun konservant.",
+                    descriptionEn: "Preservative for cosmetic and pharmaceutical products.",
+                    status: "active"
+                },
+                {
+                    id: 10,
+                    nameRu: "Метилпарабен натрий (Нипагин)",
+                    nameUz: "Metilparaben natriy (Nipagin)",
+                    nameEn: "Sodium methylparaben (Nipagin)",
+                    category: "excipient",
+                    image: "https://images.unsplash.com/photo-1584308666744-24d5c474f2ae?w=400&h=300&fit=crop",
+                    prices: { retail: 350000, wholesale: 300000 },
+                    minQty: 25,
+                    descriptionRu: "Консервант для косметических и фармацевтических продуктов.",
+                    descriptionUz: "Kosmetik va farmatsevtik mahsulotlar uchun konservant.",
+                    descriptionEn: "Preservative for cosmetic and pharmaceutical products.",
+                    status: "active"
+                },
+                {
+                    id: 11,
+                    nameRu: "Натрий крахмал гликолят",
+                    nameUz: "Natriy kraxmal glikolat",
+                    nameEn: "Sodium starch glycolate",
+                    category: "excipient",
+                    image: "https://images.unsplash.com/photo-1607613009820-a29f7bb81c04?w=400&h=300&fit=crop",
+                    prices: { retail: 75000, wholesale: 75000 },
+                    minQty: 25,
+                    descriptionRu: "Супердизинтегрант для фармацевтических таблеток.",
+                    descriptionUz: "Farmatsevtik tabletalar uchun superdisintegrant.",
+                    descriptionEn: "Superdisintegrant for pharmaceutical tablets.",
+                    status: "active"
+                },
+                {
+                    id: 12,
+                    nameRu: "Натрий карбоксиметилцеллюлоза",
+                    nameUz: "Natriy karboksimetiltsellyuloza",
+                    nameEn: "Sodium carboxymethylcellulose (CMC)",
+                    category: "excipient",
+                    image: "https://images.unsplash.com/photo-1607613009820-a29f7bb81c04?w=400&h=300&fit=crop",
+                    prices: { retail: 100000, wholesale: 100000 },
+                    minQty: 25,
+                    descriptionRu: "Натрий КМЦ для фармацевтических применений.",
+                    descriptionUz: "Farmatsevtik qo'llanishlar uchun natriy KMTS.",
+                    descriptionEn: "Sodium CMC for pharmaceutical applications.",
+                    status: "active"
+                },
+                {
+                    id: 13,
+                    nameRu: "Повидон йод",
+                    nameUz: "Povidon yod",
+                    nameEn: "Povidone iodine",
+                    category: "chemical",
+                    image: "https://images.unsplash.com/photo-1587854692152-cbe660dbde88?w=400&h=300&fit=crop",
+                    prices: { retail: 450000, wholesale: 400000 },
+                    minQty: 25,
+                    descriptionRu: "Антисептик для фармацевтических и медицинских применений.",
+                    descriptionUz: "Farmatsevtik va tibbiy qo'llanishlar uchun antiseptik.",
+                    descriptionEn: "Antiseptic for pharmaceutical and medical applications.",
+                    status: "active"
+                },
+                {
+                    id: 14,
+                    nameRu: "Поливинилпирролидон К30",
+                    nameUz: "Polivinilpirrolidon K30 (Povidon K30)",
+                    nameEn: "Polyvinylpyrrolidone K30 (Povidone K30)",
+                    category: "excipient",
+                    image: "https://images.unsplash.com/photo-1607613009820-a29f7bb81c04?w=400&h=300&fit=crop",
+                    prices: { retail: 250000, wholesale: 170000 },
+                    minQty: 25,
+                    descriptionRu: "Связывающее вещество для таблеток.",
+                    descriptionUz: "Tabletalar uchun bog'lovchi modda.",
+                    descriptionEn: "Binder for tablets.",
+                    status: "active"
+                },
+                {
+                    id: 15,
+                    nameRu: "Прокаин гидрохлорид",
+                    nameUz: "Prokain gidroxlorid (Novokain)",
+                    nameEn: "Procaine hydrochloride (Novocaine)",
+                    category: "chemical",
+                    image: "https://images.unsplash.com/photo-1584308666744-24d5c474f2ae?w=400&h=300&fit=crop",
+                    prices: { retail: 350000, wholesale: 300000 },
+                    minQty: 25,
+                    descriptionRu: "Местный анестетик для фармацевтического производства.",
+                    descriptionUz: "Farmatsevtika ishlab chiqarish uchun mahalliy anestetik.",
+                    descriptionEn: "Local anesthetic for pharmaceutical manufacturing.",
+                    status: "active"
+                },
+                {
+                    id: 16,
+                    nameRu: "Пропилпарабен (Нипазол)",
+                    nameUz: "Propilparaben (Nipazol)",
+                    nameEn: "Propylparaben (Nipazol)",
+                    category: "excipient",
+                    image: "https://images.unsplash.com/photo-1584308666744-24d5c474f2ae?w=400&h=300&fit=crop",
+                    prices: { retail: 350000, wholesale: 300000 },
+                    minQty: 25,
+                    descriptionRu: "Консервант для косметических и фармацевтических продуктов.",
+                    descriptionUz: "Kosmetik va farmatsevtik mahsulotlar uchun konservant.",
+                    descriptionEn: "Preservative for cosmetic and pharmaceutical products.",
+                    status: "active"
+                },
+                {
+                    id: 17,
+                    nameRu: "Пропилпарабен натрий (Нипазол)",
+                    nameUz: "Propilparaben natriy (Nipazol)",
+                    nameEn: "Sodium propylparaben (Nipazol)",
+                    category: "excipient",
+                    image: "https://images.unsplash.com/photo-1584308666744-24d5c474f2ae?w=400&h=300&fit=crop",
+                    prices: { retail: 350000, wholesale: 300000 },
+                    minQty: 25,
+                    descriptionRu: "Консервант для косметических и фармацевтических продуктов.",
+                    descriptionUz: "Kosmetik va farmatsevtik mahsulotlar uchun konservant.",
+                    descriptionEn: "Preservative for cosmetic and pharmaceutical products.",
+                    status: "active"
+                },
+                {
+                    id: 18,
+                    nameRu: "Фенирамина малеат",
+                    nameUz: "Feniramina maleat",
+                    nameEn: "Pheniramine maleate",
+                    category: "chemical",
+                    image: "https://images.unsplash.com/photo-1584308666744-24d5c474f2ae?w=400&h=300&fit=crop",
+                    prices: { retail: 2600000, wholesale: 2400000 },
+                    minQty: 25,
+                    descriptionRu: "Антигистаминное средство для фармацевтического производства.",
+                    descriptionUz: "Farmatsevtika ishlab chiqarish uchun antigistamin vosita.",
+                    descriptionEn: "Antihistamine for pharmaceutical manufacturing.",
+                    status: "active"
+                },
+                {
+                    id: 19,
+                    nameRu: "Солнечный закат (Sunset yellow)",
+                    nameUz: "Quyosh botishi sariq (Sunset yellow)",
+                    nameEn: "Sunset yellow",
+                    category: "chemical",
+                    image: "https://images.unsplash.com/photo-1550684848-fac1c5b4e853?w=400&h=300&fit=crop",
+                    prices: { retail: 600000, wholesale: 600000 },
+                    minQty: 5,
+                    descriptionRu: "Пищевой краситель для фармацевтической и пищевой промышленности.",
+                    descriptionUz: "Farmatsevtika va oziq-ovqat sanoati uchun ozuqali bo'yoq.",
+                    descriptionEn: "Food colorant for pharmaceutical and food industry.",
+                    status: "active"
+                },
+                {
+                    id: 20,
+                    nameRu: "Хинолин жёлтый (Quinoline yellow)",
+                    nameUz: "Xinolin sariq (Quinoline yellow)",
+                    nameEn: "Quinoline yellow",
+                    category: "chemical",
+                    image: "https://images.unsplash.com/photo-1550684848-fac1c5b4e853?w=400&h=300&fit=crop",
+                    prices: { retail: 600000, wholesale: 600000 },
+                    minQty: 5,
+                    descriptionRu: "Пищевой краситель для фармацевтической и пищевой промышленности.",
+                    descriptionUz: "Farmatsevtika va oziq-ovqat sanoati uchun ozuqali bo'yoq.",
+                    descriptionEn: "Food colorant for pharmaceutical and food industry.",
+                    status: "active"
+                },
+                {
+                    id: 21,
+                    nameRu: "Цитиколин натрий",
+                    nameUz: "Tsitikolin natriy",
+                    nameEn: "Citicoline sodium",
+                    category: "chemical",
+                    image: "https://images.unsplash.com/photo-1584308666744-24d5c474f2ae?w=400&h=300&fit=crop",
+                    prices: { retail: 4000000, wholesale: 4000000 },
+                    minQty: 25,
+                    descriptionRu: "Ноотропный ингредиент для добавок для здоровья мозга.",
+                    descriptionUz: "Miya sog'ligi uchun qo'shimchalar uchun nootrop ingredient.",
+                    descriptionEn: "Nootropic ingredient for brain health supplements.",
+                    status: "active"
+                },
+                {
+                    id: 22,
+                    nameRu: "Нитрофуразол (Фурацилин)",
+                    nameUz: "Nitrofurozol (Furatsilin)",
+                    nameEn: "Nitrofurazone (Furacilin)",
+                    category: "chemical",
+                    image: "https://images.unsplash.com/photo-1584308666744-24d5c474f2ae?w=400&h=300&fit=crop",
+                    prices: { retail: 1150000, wholesale: 1050000 },
+                    minQty: 25,
+                    descriptionRu: "Антисептик для наружного применения.",
+                    descriptionUz: "Tashqi qo'llanish uchun antiseptik.",
+                    descriptionEn: "Antiseptic for external use.",
+                    status: "active"
+                },
+                {
+                    id: 23,
+                    nameRu: "Гидроксипропилметилцеллюлоза (Гипромелоза) HPMC",
+                    nameUz: "Gidroksipropilmetiltsellyuloza (Gipromeloza) HPMC",
+                    nameEn: "Hydroxypropyl methylcellulose (HPMC)",
+                    category: "excipient",
+                    image: "https://images.unsplash.com/photo-1607613009820-a29f7bb81c04?w=400&h=300&fit=crop",
+                    prices: { retail: 250000, wholesale: 190000 },
+                    minQty: 25,
+                    descriptionRu: "Гипромеллоза для покрытия таблеток.",
+                    descriptionUz: "Tablet qoplamalari uchun gipromeloza.",
+                    descriptionEn: "Hydroxypropyl methylcellulose for tablet coating.",
+                    status: "active"
+                },
+                {
+                    id: 24,
+                    nameRu: "Полиэтиленгликоль 6000",
+                    nameUz: "Polietilenglikol 6000",
+                    nameEn: "Polyethylene glycol 6000 (PEG 6000)",
+                    category: "excipient",
+                    image: "https://images.unsplash.com/photo-1607613009820-a29f7bb81c04?w=400&h=300&fit=crop",
+                    prices: { retail: 130000, wholesale: 100000 },
+                    minQty: 25,
+                    descriptionRu: "Фармацевтический эксципиент ПЭГ 6000.",
+                    descriptionUz: "Farmatsevtik eksipiyent PEG 6000.",
+                    descriptionEn: "Pharmaceutical excipient PEG 6000.",
+                    status: "active"
+                },
+                {
+                    id: 25,
+                    nameRu: "Полиэтиленгликоль 4000",
+                    nameUz: "Polietilenglikol 4000",
+                    nameEn: "Polyethylene glycol 4000 (PEG 4000)",
+                    category: "excipient",
+                    image: "https://images.unsplash.com/photo-1607613009820-a29f7bb81c04?w=400&h=300&fit=crop",
+                    prices: { retail: 130000, wholesale: 100000 },
+                    minQty: 25,
+                    descriptionRu: "Фармацевтический эксципиент ПЭГ 4000.",
+                    descriptionUz: "Farmatsevtik eksipiyent PEG 4000.",
+                    descriptionEn: "Pharmaceutical excipient PEG 4000.",
+                    status: "active"
+                },
+                {
+                    id: 26,
+                    nameRu: "Масло эвкалиптовое",
+                    nameUz: "Evkalipt moyi",
+                    nameEn: "Eucalyptus oil",
+                    category: "oil",
+                    image: "https://images.unsplash.com/photo-1608571423902-eed4a5ad8108?w=400&h=300&fit=crop",
+                    prices: { retail: 500000, wholesale: 500000 },
+                    minQty: 25,
+                    descriptionRu: "Чистое эфирное масло эвкалипта для фармацевтического и косметического использования.",
+                    descriptionUz: "Farmatsevtik va kosmetik foydalanish uchun toza evkalipt efir moyi.",
+                    descriptionEn: "Pure eucalyptus essential oil for pharmaceutical and cosmetic use.",
+                    status: "active"
+                },
+                {
+                    id: 27,
+                    nameRu: "Масло тимоловое",
+                    nameUz: "Timol moyi",
+                    nameEn: "Thyme oil",
+                    category: "oil",
+                    image: "https://images.unsplash.com/photo-1556228578-0d85b1a4d571?w=400&h=300&fit=crop",
+                    prices: { retail: 500000, wholesale: 500000 },
+                    minQty: 25,
+                    descriptionRu: "Тимьяновое масло с высоким содержанием тимола.",
+                    descriptionUz: "Yuqori timol tarkibiga ega timyan moyi.",
+                    descriptionEn: "Thyme oil with high thymol content.",
+                    status: "active"
+                },
+                {
+                    id: 28,
+                    nameRu: "Масло мяты перечной",
+                    nameUz: "Yalpiz moyi",
+                    nameEn: "Peppermint oil",
+                    category: "oil",
+                    image: "https://images.unsplash.com/photo-1628556270448-4d4e6a4d57c1?w=400&h=300&fit=crop",
+                    prices: { retail: 500000, wholesale: 500000 },
+                    minQty: 25,
+                    descriptionRu: "Перечная мята эфирное масло для пищевой и фармацевтической промышленности.",
+                    descriptionUz: "Oziq-ovqat va farmatsevtika sanoati uchun yalpiz efir moyi.",
+                    descriptionEn: "Peppermint essential oil for food and pharmaceutical industry.",
+                    status: "active"
+                },
+                {
+                    id: 29,
+                    nameRu: "Кроскармеллоза натрий",
+                    nameUz: "Kroskarmeloza natriy",
+                    nameEn: "Croscarmellose sodium",
+                    category: "excipient",
+                    image: "https://images.unsplash.com/photo-1607613009820-a29f7bb81c04?w=400&h=300&fit=crop",
+                    prices: { retail: 300000, wholesale: 275000 },
+                    minQty: 25,
+                    descriptionRu: "Супердизинтегрант для фармацевтических таблеток.",
+                    descriptionUz: "Farmatsevtik tabletalar uchun superdisintegrant.",
+                    descriptionEn: "Superdisintegrant for pharmaceutical tablets.",
+                    status: "active"
+                },
+                {
+                    id: 30,
+                    nameRu: "Симетикон эмульсия 30%",
+                    nameUz: "Simetikon emulsiya 30%",
+                    nameEn: "Simethicone emulsion 30%",
+                    category: "chemical",
+                    image: "https://images.unsplash.com/photo-1584308666744-24d5c474f2ae?w=400&h=300&fit=crop",
+                    prices: { retail: 230000, wholesale: 230000 },
+                    minQty: 50,
+                    descriptionRu: "Антифлатулент для фармацевтических препаратов.",
+                    descriptionUz: "Farmatsevtik preparatlar uchun antiflatulent.",
+                    descriptionEn: "Antiflatulent for pharmaceutical preparations.",
+                    status: "active"
+                }
+            ];
+            
+            for (const product of INITIAL_PRODUCTS) {
+                await pool.query(`
+                    INSERT INTO products (id, name_uz, name_ru, name_en, category, prices, min_qty, 
+                        description_uz, description_ru, description_en, image, status, created_at, updated_at)
+                    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                    ON CONFLICT (id) DO NOTHING
+                `, [
+                    product.id, product.nameUz, product.nameRu, product.nameEn,
+                    product.category, JSON.stringify(product.prices), product.minQty,
+                    product.descriptionUz, product.descriptionRu, product.descriptionEn,
+                    product.image, product.status
+                ]);
+            }
+            console.log(`✅ ${INITIAL_PRODUCTS.length} ta mahsulot qo'shildi`);
         }
 
         console.log('✅ Database ready');
