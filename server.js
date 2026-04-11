@@ -389,11 +389,32 @@ app.get('/api/orders/check-payment/:orderId', async (req, res) => {
 // PRODUCTS API - BARCHA ENDPOINTLAR
 // ============================================
 
-// GET all products
 app.get('/api/products', async (req, res) => {
     try {
-        const result = await pool.query('SELECT * FROM products ORDER BY id');
-        res.json(result.rows);
+        const { lastSync } = req.query; // Client oxirgi marta qachon yangilaganini yuboradi
+        
+        let query = 'SELECT * FROM products';
+        let params = [];
+        
+        // Agar lastSync berilgan bo'lsa, faqat shu vaqtdan keyin o'zgarganlarni qaytar
+        if (lastSync) {
+            query += ' WHERE updated_at > $1';
+            params.push(new Date(parseInt(lastSync)));
+        }
+        
+        query += ' ORDER BY updated_at DESC';
+        
+        const result = await pool.query(query, params);
+        
+        // So'nggi yangilanish vaqtini ham qaytarish
+        const maxResult = await pool.query('SELECT MAX(updated_at) as last_update FROM products');
+        const serverLastUpdate = maxResult.rows[0]?.last_update || new Date();
+        
+        res.json({
+            products: result.rows,
+            serverTime: new Date().getTime(),
+            lastUpdate: serverLastUpdate
+        });
     } catch (error) {
         console.error('❌ Get products error:', error.message);
         res.status(500).json({ error: error.message });
@@ -417,35 +438,48 @@ app.get('/api/products/:id', async (req, res) => {
     }
 });
 
-// POST new product
 app.post('/api/products', async (req, res) => {
     try {
         const { id, nameUz, nameRu, nameEn, category, prices, minQty, 
                 descriptionUz, descriptionRu, descriptionEn, image, status } = req.body;
         
-        const result = await pool.query(`
-            INSERT INTO products (id, name_uz, name_ru, name_en, category, prices, 
-                min_qty, description_uz, description_ru, description_en, image, status)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
-            ON CONFLICT (id) DO UPDATE SET
-                name_uz = EXCLUDED.name_uz,
-                name_ru = EXCLUDED.name_ru,
-                name_en = EXCLUDED.name_en,
-                category = EXCLUDED.category,
-                prices = EXCLUDED.prices,
-                min_qty = EXCLUDED.min_qty,
-                description_uz = EXCLUDED.description_uz,
-                description_ru = EXCLUDED.description_ru,
-                description_en = EXCLUDED.description_en,
-                image = EXCLUDED.image,
-                status = EXCLUDED.status,
-                updated_at = CURRENT_TIMESTAMP
-            RETURNING *
-        `, [id, nameUz, nameRu, nameEn, category, JSON.stringify(prices), minQty,
-            descriptionUz, descriptionRu, descriptionEn, image, status]);
+        // Avval mavjud mahsulotni tekshirish
+        const checkResult = await pool.query('SELECT id FROM products WHERE id = $1', [id]);
+        const exists = checkResult.rowCount > 0;
         
-        console.log(`✅ Product ${id} saved`);
-        res.json({ success: true, product: result.rows[0] });
+        let result;
+        const now = new Date();
+        
+        if (exists) {
+            // UPDATE - updated_at ni yangilash
+            result = await pool.query(`
+                UPDATE products SET
+                    name_uz = $1, name_ru = $2, name_en = $3, category = $4,
+                    prices = $5, min_qty = $6, description_uz = $7, description_ru = $8,
+                    description_en = $9, image = $10, status = $11, updated_at = $12
+                WHERE id = $13
+                RETURNING *
+            `, [nameUz, nameRu, nameEn, category, JSON.stringify(prices), minQty,
+                descriptionUz, descriptionRu, descriptionEn, image, status, now, id]);
+        } else {
+            // INSERT - created_at va updated_at ni qo'shish
+            result = await pool.query(`
+                INSERT INTO products (id, name_uz, name_ru, name_en, category, prices,
+                    min_qty, description_uz, description_ru, description_en, image, status, created_at, updated_at)
+                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+                RETURNING *
+            `, [id, nameUz, nameRu, nameEn, category, JSON.stringify(prices), minQty,
+                descriptionUz, descriptionRu, descriptionEn, image, status, now, now]);
+        }
+        
+        console.log(`✅ Product ${id} ${exists ? 'updated' : 'created'} at ${now}`);
+        
+        // Barcha ulangan clientlarga xabar yuborish (keyinchalik WebSocket qo'shish mumkin)
+        res.json({ 
+            success: true, 
+            product: result.rows[0],
+            timestamp: now.getTime()
+        });
     } catch (error) {
         console.error('❌ Save product error:', error.message);
         res.status(500).json({ error: error.message });
@@ -534,7 +568,7 @@ app.delete('/api/products/:id', async (req, res) => {
         const { id } = req.params;
         await pool.query('DELETE FROM products WHERE id = $1', [id]);
         console.log(`✅ Product ${id} deleted`);
-        res.json({ success: true });
+        res.json({ success: true, deletedAt: new Date().getTime() });
     } catch (error) {
         console.error('❌ Delete product error:', error.message);
         res.status(500).json({ error: error.message });
