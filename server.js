@@ -261,11 +261,19 @@ async function initDB() {
         }
 
         // Initial products
+        // Initial products - YO'QOLGANLARNI TIKLASH
         const countResult = await pool.query('SELECT COUNT(*) as count FROM products');
-        if (parseInt(countResult.rows[0].count) === 0) {
-            console.log('📝 Adding initial products...');
-            const { INITIAL_PRODUCTS } = require('./menu.js');
-            for (const p of INITIAL_PRODUCTS) {
+        const existingIds = await pool.query('SELECT id FROM products');
+        const existingIdSet = new Set(existingIds.rows.map(r => parseInt(r.id)));
+        
+        const { INITIAL_PRODUCTS } = require('./menu.js');
+        
+        // Yo'qolgan mahsulotlarni topish
+        const missingProducts = INITIAL_PRODUCTS.filter(p => !existingIdSet.has(parseInt(p.id)));
+        
+        if (missingProducts.length > 0) {
+            console.log(`📝 ${missingProducts.length} ta mahsulot yo'qolgan, tiklanmoqda...`);
+            for (const p of missingProducts) {
                 await pool.query(`
                     INSERT INTO products (id, name_uz, name_ru, name_en, category, prices, min_qty, 
                         description_uz, description_ru, description_en, image, status, created_at, updated_at)
@@ -276,7 +284,9 @@ async function initDB() {
                     p.descriptionUz, p.descriptionRu, p.descriptionEn, p.image, p.status
                 ]);
             }
-            console.log(`✅ ${INITIAL_PRODUCTS.length} products added`);
+            console.log(`✅ ${missingProducts.length} ta mahsulot tiklandi`);
+        } else {
+            console.log('✅ Barcha mahsulotlar bazada mavjud');
         }
 
         console.log('✅ Database ready');
@@ -607,4 +617,4 @@ async function start() {
 start().catch(err => {
     console.error('❌ Failed to start:', err.message);
     process.exit(1);
-});
+});s
