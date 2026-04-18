@@ -20,6 +20,12 @@ const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
 const ADMIN_CHAT_IDS = (process.env.ADMIN_CHAT_IDS || '').split(',').map(id => id.trim()).filter(Boolean);
 const WEB_APP_URL = process.env.WEB_APP_URL || 'https://your-domain.up.railway.app';
 
+// ==================== DATABASE ====================
+const pool = new Pool({
+    connectionString: process.env.DATABASE_URL,
+    ssl: process.env.DATABASE_URL ? { rejectUnauthorized: false } : false
+});
+
 // ==================== TELEGRAM BOT ====================
 let bot = null;
 
@@ -30,152 +36,55 @@ if (BOT_TOKEN) {
     // Bot commands
     bot.setMyCommands([
         { command: 'start', description: 'Boshlash / Web App ochish' },
-        { command: 'orders', description: 'Yangi buyurtmalar (admin)' },
-        { command: 'stats', description: 'Statistika (admin)' }
+        { command: 'admin', description: 'Admin panel (faqat adminlar)' }
     ]);
 
     // /start - Barcha foydalanuvchilar
     bot.onText(/\/start/, (msg) => {
         const chatId = msg.chat.id;
         const username = msg.from.username || msg.from.first_name || 'Mijoz';
+        const isAdmin = ADMIN_CHAT_IDS.includes(String(chatId));
 
-        const text = `👋 Salom, <b>${username}</b>!\n\n` +
+        let text = `👋 Salom, <b>${username}</b>!\n\n` +
             `📦 PHARMEGIC - O'zbekiston bo'ylab farmatsevtika va oziq-ovqat hom-ashyolarini yetkazib beruvchi.\n\n` +
-            `🔹 Mahsulotlarni ko'rish va buyurtma berish uchun <b>"Katalog"</b> tugmasini bosing.\n` +
-            `🔹 Admin panelga kirish uchun <b>"Admin"</b> tugmasini bosing.`;
+            `🔹 Mahsulotlarni ko'rish va buyurtma berish uchun <b>"Katalog"</b> tugmasini bosing.`;
+
+        // Admin uchun qo'shimcha
+        if (isAdmin) {
+            text += `\n\n🔐 <b>Admin rejimi:</b> Yangi buyurtmalar uchun pastdagi tugmani bosing.`;
+        }
+
+        const keyboard = [
+            [{ text: '📦 Katalog ochish', web_app: { url: WEB_APP_URL } }]
+        ];
+
+        // Admin uchun alohida tugma
+        if (isAdmin) {
+            keyboard.push([{ text: '⚙️ Admin panel', web_app: { url: `${WEB_APP_URL}/admin.html` } }]);
+        }
 
         bot.sendMessage(chatId, text, {
             parse_mode: 'HTML',
-            reply_markup: {
-                inline_keyboard: [
-                    [{ text: '📦 Katalog ochish', web_app: { url: WEB_APP_URL } }],
-                    [{ text: '⚙️ Admin panel', url: `${WEB_APP_URL}/admin.html` }]
-                ]
-            }
+            reply_markup: { inline_keyboard: keyboard }
         });
     });
 
-    // /orders - Faqat adminlar
-    bot.onText(/\/orders/, async (msg) => {
+    // /admin - Faqat adminlar uchun
+    bot.onText(/\/admin/, (msg) => {
         const chatId = msg.chat.id;
+        
         if (!ADMIN_CHAT_IDS.includes(String(chatId))) {
             return bot.sendMessage(chatId, '❌ Bu buyruq faqat adminlar uchun');
         }
 
-        try {
-            const result = await pool.query(
-                "SELECT * FROM orders WHERE status = 'new' ORDER BY created_at DESC LIMIT 10"
-            );
-
-            if (result.rows.length === 0) {
-                return bot.sendMessage(chatId, '✅ Hozircha yangi buyurtmalar yo\'q');
+        bot.sendMessage(chatId, '🔐 <b>Admin panel</b>\n\nBuyurtmalarni boshqarish uchun quyidagi tugmani bosing:', {
+            parse_mode: 'HTML',
+            reply_markup: {
+                inline_keyboard: [
+                    [{ text: '⚙️ Admin panelni ochish', web_app: { url: `${WEB_APP_URL}/admin.html` } }]
+                ]
             }
-
-            await bot.sendMessage(chatId, `📋 <b>Yangi buyurtmalar:</b> ${result.rows.length} ta`, { parse_mode: 'HTML' });
-
-            for (const order of result.rows) {
-                await bot.sendMessage(chatId, formatOrderMessage(order), {
-                    parse_mode: 'HTML',
-                    reply_markup: {
-                        inline_keyboard: [
-                            [
-                                { text: '✅ Qabul qilish', callback_data: `approve_${order.order_id}` },
-                                { text: '❌ Bekor qilish', callback_data: `reject_${order.order_id}` }
-                            ]
-                        ]
-                    }
-                });
-            }
-        } catch (err) {
-            bot.sendMessage(chatId, '❌ Xatolik: ' + err.message);
-        }
-    });
-
-    // /stats - Faqat adminlar
-    bot.onText(/\/stats/, async (msg) => {
-        const chatId = msg.chat.id;
-        if (!ADMIN_CHAT_IDS.includes(String(chatId))) {
-            return bot.sendMessage(chatId, '❌ Bu buyruq faqat adminlar uchun');
-        }
-
-        try {
-            const total = await pool.query('SELECT COUNT(*) FROM orders');
-            const newOrders = await pool.query("SELECT COUNT(*) FROM orders WHERE status = 'new'");
-            const completed = await pool.query("SELECT COUNT(*) FROM orders WHERE status = 'completed'");
-            const cancelled = await pool.query("SELECT COUNT(*) FROM orders WHERE status = 'cancelled'");
-
-            const statsText =
-                `📊 <b>PHARMEGIC Statistika</b>\n\n` +
-                `📦 Jami buyurtmalar: <b>${total.rows[0].count}</b>\n` +
-                `🆕 Yangi: <b>${newOrders.rows[0].count}</b>\n` +
-                `✅ Qabul qilingan: <b>${completed.rows[0].count}</b>\n` +
-                `❌ Bekor qilingan: <b>${cancelled.rows[0].count}</b>`;
-
-            bot.sendMessage(chatId, statsText, { parse_mode: 'HTML' });
-        } catch (err) {
-            bot.sendMessage(chatId, '❌ Xatolik: ' + err.message);
-        }
-    });
-
-    // Callback queries (Inline buttonlar)
-    bot.on('callback_query', async (query) => {
-        const data = query.data;
-        const chatId = query.message.chat.id;
-        const messageId = query.message.message_id;
-
-        if (!ADMIN_CHAT_IDS.includes(String(chatId))) {
-            return bot.answerCallbackQuery(query.id, { text: '❌ Ruxsat yo\'q' });
-        }
-
-        try {
-            if (data.startsWith('approve_')) {
-                const orderId = data.replace('approve_', '');
-                const result = await pool.query(
-                    "UPDATE orders SET status = 'completed', updated_at = CURRENT_TIMESTAMP WHERE order_id = $1 RETURNING *",
-                    [orderId]
-                );
-                
-                if (result.rowCount === 0) {
-                    await bot.answerCallbackQuery(query.id, { text: '❌ Buyurtma topilmadi' });
-                    return;
-                }
-
-                await bot.answerCallbackQuery(query.id, { text: '✅ Buyurtma qabul qilindi!' });
-
-                const newText = query.message.text + '\n\n─────────────\n✅ <b>QABUL QILINDI</b>';
-                await bot.editMessageText(newText, {
-                    chat_id: chatId,
-                    message_id: messageId,
-                    parse_mode: 'HTML',
-                    reply_markup: { inline_keyboard: [] }
-                });
-
-            } else if (data.startsWith('reject_')) {
-                const orderId = data.replace('reject_', '');
-                const result = await pool.query(
-                    "UPDATE orders SET status = 'cancelled', updated_at = CURRENT_TIMESTAMP WHERE order_id = $1 RETURNING *",
-                    [orderId]
-                );
-
-                if (result.rowCount === 0) {
-                    await bot.answerCallbackQuery(query.id, { text: '❌ Buyurtma topilmadi' });
-                    return;
-                }
-
-                await bot.answerCallbackQuery(query.id, { text: '❌ Buyurtma bekor qilindi!' });
-
-                const newText = query.message.text + '\n\n─────────────\n❌ <b>BEKOR QILINDI</b>';
-                await bot.editMessageText(newText, {
-                    chat_id: chatId,
-                    message_id: messageId,
-                    parse_mode: 'HTML',
-                    reply_markup: { inline_keyboard: [] }
-                });
-            }
-        } catch (err) {
-            console.error('Callback xato:', err);
-            await bot.answerCallbackQuery(query.id, { text: '❌ Xatolik: ' + err.message });
-        }
+        });
     });
 
     // Bot polling error handling
@@ -198,12 +107,7 @@ app.use(cors({
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
-// ==================== DATABASE ====================
-const pool = new Pool({
-    connectionString: process.env.DATABASE_URL,
-    ssl: process.env.DATABASE_URL ? { rejectUnauthorized: false } : false
-});
-
+// ==================== DATABASE INIT ====================
 async function initDB() {
     try {
         console.log('🔄 Checking database...');
@@ -270,33 +174,34 @@ async function initDB() {
             console.log('✅ Orders table created');
         }
 
-        // Initial products
         // Initial products - YO'QOLGANLARNI TIKLASH
-        const countResult = await pool.query('SELECT COUNT(*) as count FROM products');
-        const existingIds = await pool.query('SELECT id FROM products');
-        const existingIdSet = new Set(existingIds.rows.map(r => parseInt(r.id)));
-        
-        const { INITIAL_PRODUCTS } = require('./menu.js');
-        
-        // Yo'qolgan mahsulotlarni topish
-        const missingProducts = INITIAL_PRODUCTS.filter(p => !existingIdSet.has(parseInt(p.id)));
-        
-        if (missingProducts.length > 0) {
-            console.log(`📝 ${missingProducts.length} ta mahsulot yo'qolgan, tiklanmoqda...`);
-            for (const p of missingProducts) {
-                await pool.query(`
-                    INSERT INTO products (id, name_uz, name_ru, name_en, category, prices, min_qty, 
-                        description_uz, description_ru, description_en, image, status, created_at, updated_at)
-                    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
-                    ON CONFLICT (id) DO NOTHING
-                `, [
-                    p.id, p.nameUz, p.nameRu, p.nameEn, p.category, JSON.stringify(p.prices), p.minQty,
-                    p.descriptionUz, p.descriptionRu, p.descriptionEn, p.image, p.status
-                ]);
+        try {
+            const existingIds = await pool.query('SELECT id FROM products');
+            const existingIdSet = new Set(existingIds.rows.map(r => parseInt(r.id)));
+            
+            const { INITIAL_PRODUCTS } = require('./menu.js');
+            
+            const missingProducts = INITIAL_PRODUCTS.filter(p => !existingIdSet.has(parseInt(p.id)));
+            
+            if (missingProducts.length > 0) {
+                console.log(`📝 ${missingProducts.length} ta mahsulot yo'qolgan, tiklanmoqda...`);
+                for (const p of missingProducts) {
+                    await pool.query(`
+                        INSERT INTO products (id, name_uz, name_ru, name_en, category, prices, min_qty, 
+                            description_uz, description_ru, description_en, image, status, created_at, updated_at)
+                        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                        ON CONFLICT (id) DO NOTHING
+                    `, [
+                        p.id, p.nameUz, p.nameRu, p.nameEn, p.category, JSON.stringify(p.prices), p.minQty,
+                        p.descriptionUz, p.descriptionRu, p.descriptionEn, p.image, p.status
+                    ]);
+                }
+                console.log(`✅ ${missingProducts.length} ta mahsulot tiklandi`);
+            } else {
+                console.log('✅ Barcha mahsulotlar bazada mavjud');
             }
-            console.log(`✅ ${missingProducts.length} ta mahsulot tiklandi`);
-        } else {
-            console.log('✅ Barcha mahsulotlar bazada mavjud');
+        } catch (e) {
+            console.warn('⚠️ menu.js topilmadi:', e.message);
         }
 
         console.log('✅ Database ready');
@@ -332,6 +237,7 @@ function formatOrderMessage(order) {
         `🕐 ${new Date(order.created_at).toLocaleString('uz-UZ')}`;
 }
 
+// ✅ YANGI: Faqat "Admin panel" tugmasi bilan xabar
 async function notifyAdmins(order) {
     if (!bot || ADMIN_CHAT_IDS.length === 0) {
         console.log('⚠️ Bot or admin IDs not configured, skipping notification');
@@ -342,14 +248,12 @@ async function notifyAdmins(order) {
 
     for (const adminId of ADMIN_CHAT_IDS) {
         try {
+            // ✅ Faqat xabar + Admin panel tugmasi (backend tugmalari yo'q)
             await bot.sendMessage(adminId, message, {
                 parse_mode: 'HTML',
                 reply_markup: {
                     inline_keyboard: [
-                        [
-                            { text: '✅ Qabul qilish', callback_data: `approve_${order.order_id}` },
-                            { text: '❌ Bekor qilish', callback_data: `reject_${order.order_id}` }
-                        ]
+                        [{ text: '⚙️ Admin panelni ochish', web_app: { url: `${WEB_APP_URL}/admin.html` } }]
                     ]
                 }
             });
@@ -401,7 +305,7 @@ app.post('/api/orders/create-with-payment', async (req, res) => {
         const savedOrder = result.rows[0];
         console.log('✅ Order saved:', savedOrder.order_id);
 
-        // ===== TELEGRAM NOTIFICATION =====
+        // ✅ TELEGRAM NOTIFICATION (faqat Admin panel tugmasi bilan)
         await notifyAdmins(savedOrder);
 
         // Click payment URL (only for individuals)
@@ -438,7 +342,7 @@ app.post('/api/orders/create-with-payment', async (req, res) => {
     }
 });
 
-// Approve Order
+// Approve Order (Admin panel orqali)
 app.post('/api/orders/:orderId/approve', async (req, res) => {
     try {
         const result = await pool.query(
@@ -452,7 +356,7 @@ app.post('/api/orders/:orderId/approve', async (req, res) => {
     }
 });
 
-// Reject Order
+// Reject Order (Admin panel orqali)
 app.post('/api/orders/:orderId/reject', async (req, res) => {
     try {
         const result = await pool.query(
