@@ -130,14 +130,18 @@ if (BOT_TOKEN) {
         try {
             if (data.startsWith('approve_')) {
                 const orderId = data.replace('approve_', '');
-                await pool.query(
-                    "UPDATE orders SET status = 'completed', updated_at = CURRENT_TIMESTAMP WHERE order_id = $1",
+                const result = await pool.query(
+                    "UPDATE orders SET status = 'completed', updated_at = CURRENT_TIMESTAMP WHERE order_id = $1 RETURNING *",
                     [orderId]
                 );
+                
+                if (result.rowCount === 0) {
+                    await bot.answerCallbackQuery(query.id, { text: '❌ Buyurtma topilmadi' });
+                    return;
+                }
 
-                bot.answerCallbackQuery(query.id, { text: '✅ Buyurtma qabul qilindi!' });
+                await bot.answerCallbackQuery(query.id, { text: '✅ Buyurtma qabul qilindi!' });
 
-                // Xabarni yangilash
                 const newText = query.message.text + '\n\n─────────────\n✅ <b>QABUL QILINDI</b>';
                 await bot.editMessageText(newText, {
                     chat_id: chatId,
@@ -148,12 +152,17 @@ if (BOT_TOKEN) {
 
             } else if (data.startsWith('reject_')) {
                 const orderId = data.replace('reject_', '');
-                await pool.query(
-                    "UPDATE orders SET status = 'cancelled', updated_at = CURRENT_TIMESTAMP WHERE order_id = $1",
+                const result = await pool.query(
+                    "UPDATE orders SET status = 'cancelled', updated_at = CURRENT_TIMESTAMP WHERE order_id = $1 RETURNING *",
                     [orderId]
                 );
 
-                bot.answerCallbackQuery(query.id, { text: '❌ Buyurtma bekor qilindi!' });
+                if (result.rowCount === 0) {
+                    await bot.answerCallbackQuery(query.id, { text: '❌ Buyurtma topilmadi' });
+                    return;
+                }
+
+                await bot.answerCallbackQuery(query.id, { text: '❌ Buyurtma bekor qilindi!' });
 
                 const newText = query.message.text + '\n\n─────────────\n❌ <b>BEKOR QILINDI</b>';
                 await bot.editMessageText(newText, {
@@ -164,7 +173,8 @@ if (BOT_TOKEN) {
                 });
             }
         } catch (err) {
-            bot.answerCallbackQuery(query.id, { text: '❌ Xatolik: ' + err.message });
+            console.error('Callback xato:', err);
+            await bot.answerCallbackQuery(query.id, { text: '❌ Xatolik: ' + err.message });
         }
     });
 
