@@ -178,25 +178,25 @@ async function initDB() {
         try {
             const { INITIAL_PRODUCTS } = require('./menu.js');
             
-            // Faqat baza bo'sh bo'lsa qo'shish, mavjudlarga tegmaydi!
             const countResult = await pool.query('SELECT COUNT(*) FROM products');
             const existingCount = parseInt(countResult.rows[0].count);
             
             if (existingCount === 0) {
-                // Baza yangi yaratilgan bo'lsa, boshlang'ich mahsulotlarni qo'shish
+                console.log('📦 Baza bo\'sh, boshlang\'ich mahsulotlarni qo\'shish...');
                 for (const p of INITIAL_PRODUCTS) {
                     await pool.query(`
                         INSERT INTO products (id, name_uz, name_ru, name_en, category, prices, min_qty, 
                             description_uz, description_ru, description_en, image, status, created_at, updated_at)
                         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                        ON CONFLICT (id) DO NOTHING
                     `, [
                         p.id, p.nameUz, p.nameRu, p.nameEn, p.category, JSON.stringify(p.prices), p.minQty,
                         p.descriptionUz, p.descriptionRu, p.descriptionEn, p.image, p.status
                     ]);
                 }
-                console.log(`✅ Bazaga ${INITIAL_PRODUCTS.length} ta mahsulot qo'shildi (seed)`);
+                console.log(`✅ ${INITIAL_PRODUCTS.length} ta mahsulot seed qilindi`);
             } else {
-                console.log(`ℹ️ Baza da ${existingCount} ta mahsulot mavjud, seed o'tkazib yuborildi (real-time saqlanadi)`);
+                console.log(`ℹ️ Baza da ${existingCount} ta mahsulot mavjud, eski seed o'tkazib yuborildi`);
             }
         } catch (e) {
             console.warn('⚠️ menu.js topilmadi yoki xato:', e.message);
