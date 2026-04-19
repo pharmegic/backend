@@ -45,13 +45,13 @@ if (BOT_TOKEN) {
         const username = msg.from.username || msg.from.first_name || 'Mijoz';
         const isAdmin = ADMIN_CHAT_IDS.includes(String(chatId));
 
-        let text = `👋 Salom, <b>${username}</b>!\n\n` +
-            `📦 PHARMEGIC - O'zbekiston bo'ylab farmatsevtika va oziq-ovqat hom-ashyolarini yetkazib beruvchi.\n\n` +
+        let text = `👋 Salom, <b>${username}</b>!\\n\\n` +
+            `📦 PHARMEGIC - O'zbekiston bo'ylab farmatsevtika va oziq-ovqat hom-ashyolarini yetkazib beruvchi.\\n\\n` +
             `🔹 Mahsulotlarni ko'rish va buyurtma berish uchun <b>"Katalog"</b> tugmasini bosing.`;
 
         // Admin uchun qo'shimcha
         if (isAdmin) {
-            text += `\n\n🔐 <b>Admin rejimi:</b> Yangi buyurtmalar uchun pastdagi tugmani bosing.`;
+            text += `\\n\\n🔐 <b>Admin rejimi:</b> Yangi buyurtmalar uchun pastdagi tugmani bosing.`;
         }
 
         const keyboard = [
@@ -77,7 +77,7 @@ if (BOT_TOKEN) {
             return bot.sendMessage(chatId, '❌ Bu buyruq faqat adminlar uchun');
         }
 
-        bot.sendMessage(chatId, '🔐 <b>Admin panel</b>\n\nBuyurtmalarni boshqarish uchun quyidagi tugmani bosing:', {
+        bot.sendMessage(chatId, '🔐 <b>Admin panel</b>\\n\\nBuyurtmalarni boshqarish uchun quyidagi tugmani bosing:', {
             parse_mode: 'HTML',
             reply_markup: {
                 inline_keyboard: [
@@ -174,35 +174,34 @@ async function initDB() {
             console.log('✅ Orders table created');
         }
 
-        // Initial products - YO'QOLGANLARNI TIKLASH
+        // ================== MUHIM: Bazani INITIAL_PRODUCTS bilan sinxronlash ==================
         try {
-            const existingIds = await pool.query('SELECT id FROM products');
-            const existingIdSet = new Set(existingIds.rows.map(r => parseInt(r.id)));
-            
             const { INITIAL_PRODUCTS } = require('./menu.js');
             
-            const missingProducts = INITIAL_PRODUCTS.filter(p => !existingIdSet.has(parseInt(p.id)));
+            // Faqat baza bo'sh bo'lsa qo'shish, mavjudlarga tegmaydi!
+            const countResult = await pool.query('SELECT COUNT(*) FROM products');
+            const existingCount = parseInt(countResult.rows[0].count);
             
-            if (missingProducts.length > 0) {
-                console.log(`📝 ${missingProducts.length} ta mahsulot yo'qolgan, tiklanmoqda...`);
-                for (const p of missingProducts) {
+            if (existingCount === 0) {
+                // Baza yangi yaratilgan bo'lsa, boshlang'ich mahsulotlarni qo'shish
+                for (const p of INITIAL_PRODUCTS) {
                     await pool.query(`
                         INSERT INTO products (id, name_uz, name_ru, name_en, category, prices, min_qty, 
                             description_uz, description_ru, description_en, image, status, created_at, updated_at)
                         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
-                        ON CONFLICT (id) DO NOTHING
                     `, [
                         p.id, p.nameUz, p.nameRu, p.nameEn, p.category, JSON.stringify(p.prices), p.minQty,
                         p.descriptionUz, p.descriptionRu, p.descriptionEn, p.image, p.status
                     ]);
                 }
-                console.log(`✅ ${missingProducts.length} ta mahsulot tiklandi`);
+                console.log(`✅ Bazaga ${INITIAL_PRODUCTS.length} ta mahsulot qo'shildi (seed)`);
             } else {
-                console.log('✅ Barcha mahsulotlar bazada mavjud');
+                console.log(`ℹ️ Baza da ${existingCount} ta mahsulot mavjud, seed o'tkazib yuborildi (real-time saqlanadi)`);
             }
         } catch (e) {
-            console.warn('⚠️ menu.js topilmadi:', e.message);
+            console.warn('⚠️ menu.js topilmadi yoki xato:', e.message);
         }
+
 
         console.log('✅ Database ready');
         return true;
@@ -220,20 +219,20 @@ function generateClickSignature(params, secretKey) {
 
 function formatOrderMessage(order) {
     const items = typeof order.items === 'string' ? JSON.parse(order.items) : (order.items || []);
-    const itemsText = items.map(i => `• ${i.name}: <b>${i.quantity} kg</b>`).join('\n');
+    const itemsText = items.map(i => `• ${i.name}: <b>${i.quantity} kg</b>`).join('\\n');
 
     const typeIcon = order.customer_type === 'legal' ? '🏢' : '👤';
     const typeText = order.customer_type === 'legal' ? 'Yuridik shaxs' : 'Jismoniy shaxs';
 
-    return `🆕 <b>Yangi buyurtma!</b>\n\n` +
-        `🆔 ID: <code>${order.order_id}</code>\n` +
-        `${typeIcon} Turi: <b>${typeText}</b>\n` +
-        `👤 Mijoz: <b>${order.customer_name}</b>\n` +
-        `📞 Tel: <code>${order.phone}</code>\n` +
-        `📍 Manzil: ${order.address || '-'}\n` +
-        `💰 Summa: <b>${order.total} so'm</b>\n` +
-        `💳 To'lov: ${order.payment_method}\n\n` +
-        `📋 Mahsulotlar:\n${itemsText}\n\n` +
+    return `🆕 <b>Yangi buyurtma!</b>\\n\\n` +
+        `🆔 ID: <code>${order.order_id}</code>\\n` +
+        `${typeIcon} Turi: <b>${typeText}</b>\\n` +
+        `👤 Mijoz: <b>${order.customer_name}</b>\\n` +
+        `📞 Tel: <code>${order.phone}</code>\\n` +
+        `📍 Manzil: ${order.address || '-'}\\n` +
+        `💰 Summa: <b>${order.total} so'm</b>\\n` +
+        `💳 To'lov: ${order.payment_method}\\n\\n` +
+        `📋 Mahsulotlar:\\n${itemsText}\\n\\n` +
         `🕐 ${new Date(order.created_at).toLocaleString('uz-UZ')}`;
 }
 
@@ -268,7 +267,7 @@ async function notifyAdmins(order) {
 
 // Create Order
 app.post('/api/orders/create-with-payment', async (req, res) => {
-    console.log('\n📥 Create order request:', req.body);
+    console.log('\\n📥 Create order request:', req.body);
 
     try {
         const { customerName, phone, address, comment, items, total, userType } = req.body;
@@ -337,7 +336,7 @@ app.post('/api/orders/create-with-payment', async (req, res) => {
         });
 
     } catch (error) {
-        console.error('\n❌ Order error:', error.message);
+        console.error('\\n❌ Order error:', error.message);
         res.status(500).json({ error: 'Internal server error', details: error.message });
     }
 });
