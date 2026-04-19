@@ -174,7 +174,7 @@ async function initDB() {
             console.log('✅ Orders table created');
         }
 
-        // ================== MUHIM: Bazani INITIAL_PRODUCTS bilan sinxronlash ==================
+        // ✅ YANGI: Faqat baza bo'sh bo'lsa seed qiladi, mavjudlarga tegmaydi!
         try {
             const { INITIAL_PRODUCTS } = require('./menu.js');
             
@@ -196,12 +196,11 @@ async function initDB() {
                 }
                 console.log(`✅ ${INITIAL_PRODUCTS.length} ta mahsulot seed qilindi`);
             } else {
-                console.log(`ℹ️ Baza da ${existingCount} ta mahsulot mavjud, eski seed o'tkazib yuborildi`);
+                console.log(`ℹ️ Baza da ${existingCount} ta mahsulot mavjud, seed o'tkazib yuborildi`);
             }
         } catch (e) {
             console.warn('⚠️ menu.js topilmadi yoki xato:', e.message);
         }
-
 
         console.log('✅ Database ready');
         return true;
