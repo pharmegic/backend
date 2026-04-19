@@ -107,7 +107,8 @@ app.use(cors({
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
-// ==================== DATABASE INIT ====================
+// server.js - initDB() funksiyasini almashtiring
+
 async function initDB() {
     try {
         console.log('🔄 Checking database...');
@@ -174,32 +175,59 @@ async function initDB() {
             console.log('✅ Orders table created');
         }
 
-        // ✅ YANGI: Faqat baza bo'sh bo'lsa seed qiladi, mavjudlarga tegmaydi!
+        // ✅ TO'G'RILANDI: Har doim seed qilish (agar bo'sh bo'lsa)
         try {
             const { INITIAL_PRODUCTS } = require('./menu.js');
             
+            // Avval eski mahsulotlar sonini tekshiramiz
             const countResult = await pool.query('SELECT COUNT(*) FROM products');
             const existingCount = parseInt(countResult.rows[0].count);
             
+            console.log(`📊 Mavjud mahsulotlar: ${existingCount} ta`);
+            
+            // ✅ AGAR BAZA BO'SH BO'LSA, SEED QILISH
             if (existingCount === 0) {
                 console.log('📦 Baza bo\'sh, boshlang\'ich mahsulotlarni qo\'shish...');
+                
                 for (const p of INITIAL_PRODUCTS) {
-                    await pool.query(`
-                        INSERT INTO products (id, name_uz, name_ru, name_en, category, prices, min_qty, 
-                            description_uz, description_ru, description_en, image, status, created_at, updated_at)
-                        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
-                        ON CONFLICT (id) DO NOTHING
-                    `, [
-                        p.id, p.nameUz, p.nameRu, p.nameEn, p.category, JSON.stringify(p.prices), p.minQty,
-                        p.descriptionUz, p.descriptionRu, p.descriptionEn, p.image, p.status
-                    ]);
+                    try {
+                        await pool.query(`
+                            INSERT INTO products (id, name_uz, name_ru, name_en, category, prices, min_qty, 
+                                description_uz, description_ru, description_en, image, status, created_at, updated_at)
+                            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                            ON CONFLICT (id) DO UPDATE SET
+                                name_uz = EXCLUDED.name_uz,
+                                name_ru = EXCLUDED.name_ru,
+                                name_en = EXCLUDED.name_en,
+                                category = EXCLUDED.category,
+                                prices = EXCLUDED.prices,
+                                min_qty = EXCLUDED.min_qty,
+                                description_uz = EXCLUDED.description_uz,
+                                description_ru = EXCLUDED.description_ru,
+                                description_en = EXCLUDED.description_en,
+                                image = EXCLUDED.image,
+                                status = EXCLUDED.status,
+                                updated_at = CURRENT_TIMESTAMP
+                        `, [
+                            p.id, p.nameUz, p.nameRu, p.nameEn, p.category, 
+                            JSON.stringify(p.prices), p.minQty,
+                            p.descriptionUz, p.descriptionRu, p.descriptionEn, 
+                            p.image, p.status
+                        ]);
+                    } catch (insertError) {
+                        console.error(`❌ Mahsulot ${p.id} qo'shishda xato:`, insertError.message);
+                    }
                 }
-                console.log(`✅ ${INITIAL_PRODUCTS.length} ta mahsulot seed qilindi`);
+                
+                // Tekshirish
+                const newCount = await pool.query('SELECT COUNT(*) FROM products');
+                console.log(`✅ ${newCount.rows[0].count} ta mahsulot seed qilindi`);
             } else {
                 console.log(`ℹ️ Baza da ${existingCount} ta mahsulot mavjud, seed o'tkazib yuborildi`);
             }
         } catch (e) {
             console.warn('⚠️ menu.js topilmadi yoki xato:', e.message);
+            console.error(e); // To'liq xatani ko'rsatish
         }
 
         console.log('✅ Database ready');
