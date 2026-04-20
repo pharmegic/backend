@@ -108,6 +108,7 @@ app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
 // ==================== DATABASE INIT ====================
+// ==================== DATABASE INIT ====================
 async function initDB() {
     try {
         console.log('🔄 Checking database...');
@@ -197,6 +198,34 @@ async function initDB() {
                 )
             `);
             console.log('✅ Sourcing requests table created');
+        } else {
+            // ✅ FIX: Check and add missing columns to existing table
+            console.log('🔍 Checking sourcing_requests columns...');
+            
+            const requiredColumns = [
+                { name: 'product', type: 'VARCHAR(255)' },
+                { name: 'quantity', type: 'DECIMAL(10,2)' },
+                { name: 'company', type: 'VARCHAR(255)' },
+                { name: 'phone', type: 'VARCHAR(50)' },
+                { name: 'status', type: "VARCHAR(50) DEFAULT 'new'" },
+                { name: 'created_at', type: 'TIMESTAMP DEFAULT CURRENT_TIMESTAMP' },
+                { name: 'updated_at', type: 'TIMESTAMP DEFAULT CURRENT_TIMESTAMP' }
+            ];
+
+            for (const col of requiredColumns) {
+                const colExists = await pool.query(`
+                    SELECT EXISTS (
+                        SELECT FROM information_schema.columns 
+                        WHERE table_name = 'sourcing_requests' 
+                        AND column_name = $1
+                    );
+                `, [col.name]);
+                
+                if (!colExists.rows[0].exists) {
+                    await pool.query(`ALTER TABLE sourcing_requests ADD COLUMN ${col.name} ${col.type}`);
+                    console.log(`✅ Added missing column: ${col.name}`);
+                }
+            }
         }
 
         // ✅ SEED: Har doim tekshirish va qo'shish
