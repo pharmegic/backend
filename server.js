@@ -507,6 +507,9 @@ app.post('/api/payment/click/complete', async (req, res) => {
 // ==================== SOURCING API ====================
 
 // Create sourcing request
+// ==================== SOURCING API ====================
+
+// Create sourcing request
 app.post('/api/sourcing', async (req, res) => {
     console.log('\n📥 Sourcing request:', req.body);
 
@@ -537,7 +540,7 @@ app.post('/api/sourcing', async (req, res) => {
         ]);
 
         const savedRequest = result.rows[0];
-        console.log('✅ Sourcing saved:', savedRequest.request_id);
+        console.log('✅ Sourcing saved:', savedRequest.request_id || savedRequest.id);
 
         // ✅ TELEGRAM NOTIFICATION
         await notifyAdminsSourcing(savedRequest);
@@ -551,6 +554,44 @@ app.post('/api/sourcing', async (req, res) => {
     } catch (error) {
         console.error('\n❌ Sourcing error:', error.message);
         res.status(500).json({ error: 'Internal server error', details: error.message });
+    }
+});
+
+// Get sourcing requests
+app.get('/api/sourcing', async (req, res) => {
+    try {
+        const result = await pool.query('SELECT * FROM sourcing_requests ORDER BY created_at DESC');
+        res.json(result.rows);
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// Approve sourcing
+app.post('/api/sourcing/:requestId/approve', async (req, res) => {
+    try {
+        const result = await pool.query(
+            "UPDATE sourcing_requests SET status = 'completed', updated_at = CURRENT_TIMESTAMP WHERE request_id = $1 RETURNING *",
+            [req.params.requestId]
+        );
+        if (result.rowCount === 0) return res.status(404).json({ error: 'Request not found' });
+        res.json({ success: true, message: 'Qabul qilindi', request: result.rows[0] });
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// Reject sourcing
+app.post('/api/sourcing/:requestId/reject', async (req, res) => {
+    try {
+        const result = await pool.query(
+            "UPDATE sourcing_requests SET status = 'cancelled', updated_at = CURRENT_TIMESTAMP WHERE request_id = $1 RETURNING *",
+            [req.params.requestId]
+        );
+        if (result.rowCount === 0) return res.status(404).json({ error: 'Request not found' });
+        res.json({ success: true, message: 'Bekor qilindi', request: result.rows[0] });
+    } catch (error) {
+        res.status(500).json({ error: error.message });
     }
 });
 
