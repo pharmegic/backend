@@ -47,7 +47,7 @@ if (BOT_TOKEN) {
 
         let text = `👋 Salom, <b>${username}</b>!\n\n` +
             `📦 PHARMEGIC - O'zbekiston bo'ylab farmatsevtika va oziq-ovqat hom-ashyolarini yetkazib beruvchi.\n\n` +
-            `🔹 Mahsulotlarni ko'rish va buyurtma berish uchun <b>"Katalog"</b> tugmasни bosing.`;
+            `🔹 Mahsulotlarni ko'rish va buyurtma berish uchun <b>"Katalog"</b> tugmasini bosing.`;
 
         // Admin uchun qo'shimcha
         if (isAdmin) {
@@ -107,8 +107,7 @@ app.use(cors({
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
-// server.js - initDB() funksiyasini almashtiring
-
+// ==================== DATABASE INIT ====================
 async function initDB() {
     try {
         console.log('🔄 Checking database...');
@@ -175,17 +174,40 @@ async function initDB() {
             console.log('✅ Orders table created');
         }
 
-        // ✅ TO'G'RILANDI: Har doim seed qilish (agar bo'sh bo'lsa)
+        // Sourcing requests table
+        const sourcingCheck = await pool.query(`
+            SELECT EXISTS (
+                SELECT FROM information_schema.tables 
+                WHERE table_name = 'sourcing_requests'
+            );
+        `);
+
+        if (!sourcingCheck.rows[0].exists) {
+            await pool.query(`
+                CREATE TABLE sourcing_requests (
+                    id SERIAL PRIMARY KEY,
+                    request_id VARCHAR(255) UNIQUE NOT NULL,
+                    product VARCHAR(255) NOT NULL,
+                    quantity DECIMAL(10,2),
+                    company VARCHAR(255),
+                    phone VARCHAR(50),
+                    status VARCHAR(50) DEFAULT 'new',
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            `);
+            console.log('✅ Sourcing requests table created');
+        }
+
+        // ✅ SEED: Har doim tekshirish va qo'shish
         try {
             const { INITIAL_PRODUCTS } = require('./menu.js');
             
-            // Avval eski mahsulotlar sonini tekshiramiz
             const countResult = await pool.query('SELECT COUNT(*) FROM products');
             const existingCount = parseInt(countResult.rows[0].count);
             
             console.log(`📊 Mavjud mahsulotlar: ${existingCount} ta`);
             
-            // ✅ AGAR BAZA BO'SH BO'LSA, SEED QILISH
             if (existingCount === 0) {
                 console.log('📦 Baza bo\'sh, boshlang\'ich mahsulotlarni qo\'shish...');
                 
@@ -219,7 +241,6 @@ async function initDB() {
                     }
                 }
                 
-                // Tekshirish
                 const newCount = await pool.query('SELECT COUNT(*) FROM products');
                 console.log(`✅ ${newCount.rows[0].count} ta mahsulot seed qilindi`);
             } else {
@@ -227,7 +248,6 @@ async function initDB() {
             }
         } catch (e) {
             console.warn('⚠️ menu.js topilmadi yoki xato:', e.message);
-            console.error(e); // To'liq xatani ko'rsatish
         }
 
         console.log('✅ Database ready');
@@ -263,7 +283,16 @@ function formatOrderMessage(order) {
         `🕐 ${new Date(order.created_at).toLocaleString('uz-UZ')}`;
 }
 
-// ✅ YANGI: Faqat "Admin panel" tugmasi bilan xabar
+function formatSourcingMessage(req) {
+    return `🔍 <b>Yangi "Topib berish" so'rovi!</b>\n\n` +
+        `🆔 ID: <code>${req.request_id}</code>\n` +
+        `📦 Mahsulot: <b>${req.product}</b>\n` +
+        `📊 Miqdor: <b>${req.quantity} kg</b>\n` +
+        `🏢 Kompaniya: <b>${req.company}</b>\n` +
+        `📞 Tel: <code>${req.phone}</code>\n` +
+        `🕐 ${new Date(req.created_at).toLocaleString('uz-UZ')}`;
+}
+
 async function notifyAdmins(order) {
     if (!bot || ADMIN_CHAT_IDS.length === 0) {
         console.log('⚠️ Bot or admin IDs not configured, skipping notification');
@@ -274,7 +303,6 @@ async function notifyAdmins(order) {
 
     for (const adminId of ADMIN_CHAT_IDS) {
         try {
-            // ✅ Faqat xabar + Admin panel tugmasi (backend tugmalari yo'q)
             await bot.sendMessage(adminId, message, {
                 parse_mode: 'HTML',
                 reply_markup: {
@@ -284,6 +312,31 @@ async function notifyAdmins(order) {
                 }
             });
             console.log(`📨 Notification sent to admin ${adminId}`);
+        } catch (err) {
+            console.error(`❌ Failed to notify admin ${adminId}:`, err.message);
+        }
+    }
+}
+
+async function notifyAdminsSourcing(req) {
+    if (!bot || ADMIN_CHAT_IDS.length === 0) {
+        console.log('⚠️ Bot not configured, skipping sourcing notification');
+        return;
+    }
+
+    const message = formatSourcingMessage(req);
+
+    for (const adminId of ADMIN_CHAT_IDS) {
+        try {
+            await bot.sendMessage(adminId, message, {
+                parse_mode: 'HTML',
+                reply_markup: {
+                    inline_keyboard: [
+                        [{ text: '⚙️ Admin panelni ochish', web_app: { url: `${WEB_APP_URL}/admin.html` } }]
+                    ]
+                }
+            });
+            console.log(`📨 Sourcing notification sent to admin ${adminId}`);
         } catch (err) {
             console.error(`❌ Failed to notify admin ${adminId}:`, err.message);
         }
@@ -331,7 +384,7 @@ app.post('/api/orders/create-with-payment', async (req, res) => {
         const savedOrder = result.rows[0];
         console.log('✅ Order saved:', savedOrder.order_id);
 
-        // ✅ TELEGRAM NOTIFICATION (faqat Admin panel tugmasi bilan)
+        // ✅ TELEGRAM NOTIFICATION
         await notifyAdmins(savedOrder);
 
         // Click payment URL (only for individuals)
@@ -368,7 +421,7 @@ app.post('/api/orders/create-with-payment', async (req, res) => {
     }
 });
 
-// Approve Order (Admin panel orqali)
+// Approve Order
 app.post('/api/orders/:orderId/approve', async (req, res) => {
     try {
         const result = await pool.query(
@@ -382,7 +435,7 @@ app.post('/api/orders/:orderId/approve', async (req, res) => {
     }
 });
 
-// Reject Order (Admin panel orqali)
+// Reject Order
 app.post('/api/orders/:orderId/reject', async (req, res) => {
     try {
         const result = await pool.query(
@@ -451,7 +504,96 @@ app.post('/api/payment/click/complete', async (req, res) => {
     }
 });
 
+// ==================== SOURCING API ====================
+
+// Create sourcing request
+app.post('/api/sourcing', async (req, res) => {
+    console.log('\n📥 Sourcing request:', req.body);
+
+    try {
+        const { product, quantity, company, phone } = req.body;
+
+        if (!product || !company || !phone) {
+            return res.status(400).json({ 
+                error: 'Missing required fields',
+                required: ['product', 'company', 'phone']
+            });
+        }
+
+        const requestId = 'SRC-' + Date.now();
+
+        const result = await pool.query(`
+            INSERT INTO sourcing_requests (
+                request_id, product, quantity, company, phone, status, created_at
+            ) VALUES ($1, $2, $3, $4, $5, $6, CURRENT_TIMESTAMP)
+            RETURNING *
+        `, [
+            requestId,
+            product,
+            parseFloat(quantity) || 0,
+            company,
+            phone,
+            'new'
+        ]);
+
+        const savedRequest = result.rows[0];
+        console.log('✅ Sourcing saved:', savedRequest.request_id);
+
+        // ✅ TELEGRAM NOTIFICATION
+        await notifyAdminsSourcing(savedRequest);
+
+        res.json({
+            success: true,
+            request_id: requestId,
+            message: "So'rov yuborildi"
+        });
+
+    } catch (error) {
+        console.error('\n❌ Sourcing error:', error.message);
+        res.status(500).json({ error: 'Internal server error', details: error.message });
+    }
+});
+
+// Get sourcing requests
+app.get('/api/sourcing', async (req, res) => {
+    try {
+        const result = await pool.query('SELECT * FROM sourcing_requests ORDER BY created_at DESC');
+        res.json(result.rows);
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// Approve sourcing
+app.post('/api/sourcing/:requestId/approve', async (req, res) => {
+    try {
+        const result = await pool.query(
+            "UPDATE sourcing_requests SET status = 'completed', updated_at = CURRENT_TIMESTAMP WHERE request_id = $1 RETURNING *",
+            [req.params.requestId]
+        );
+        if (result.rowCount === 0) return res.status(404).json({ error: 'Request not found' });
+        res.json({ success: true, message: 'Qabul qilindi', request: result.rows[0] });
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// Reject sourcing
+app.post('/api/sourcing/:requestId/reject', async (req, res) => {
+    try {
+        const result = await pool.query(
+            "UPDATE sourcing_requests SET status = 'cancelled', updated_at = CURRENT_TIMESTAMP WHERE request_id = $1 RETURNING *",
+            [req.params.requestId]
+        );
+        if (result.rowCount === 0) return res.status(404).json({ error: 'Request not found' });
+        res.json({ success: true, message: 'Bekor qilindi', request: result.rows[0] });
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
 // ==================== PRODUCTS API ====================
+
 app.get('/api/products', async (req, res) => {
     try {
         const { lastSync } = req.query;
