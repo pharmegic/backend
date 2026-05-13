@@ -1,47 +1,5 @@
 const INITIAL_PRODUCTS = [
     {
-        id: 1,
-        nameRu: "Ментол кристаллический",
-        nameUz: "Mentol kristall",
-        nameEn: "Menthol crystals",
-        category: "chemical",
-        image: "https://i.ibb.co/Xxb7VKYD/0e9280e5ee617a76aa82d2a5388ffdca.webp",
-        prices: { retail: 350000, wholesale: 300000 },
-        minQty: 25,
-        descriptionRu: "Фармацевтический ментол для косметических и фармацевтических применений.",
-        descriptionUz: "Kosmetik va farmatsevtik qo'llanish uchun farmatsevtik mentol.",
-        descriptionEn: "Pharmaceutical menthol for cosmetic and pharmaceutical applications.",
-        status: "active"
-    },
-    {
-        id: 2,
-        nameRu: "Прокаин гидрохлорид (Новокаин)",
-        nameUz: "Prokain gidroxlorid (Novokain)",
-        nameEn: "Procaine hydrochloride (Novocaine)",
-        category: "chemical",
-        image: "https://i.ibb.co/N2JXcMXZ/4.webp",
-        prices: { retail: 350000, wholesale: 300000 },
-        minQty: 25,
-        descriptionRu: "Местный анестетик для фармацевтического производства.",
-        descriptionUz: "Farmatsevtika ishlab chiqarish uchun mahalliy anestetik.",
-        descriptionEn: "Local anesthetic for pharmaceutical manufacturing.",
-        status: "active"
-    },
-    {
-        id: 3,
-        nameRu: "Бензокаин (Анестезин)",
-        nameUz: "Benzokain (Anestezin)",
-        nameEn: "Benzocaine (Anesthesin)",
-        category: "chemical",
-        image: "",
-        prices: { retail: 350000, wholesale: 300000 },
-        minQty: 25,
-        descriptionRu: "Местный анестетик для медицинских и косметических продуктов.",
-        descriptionUz: "Tibbiy va kosmetik mahsulotlar uchun mahalliy anestetik.",
-        descriptionEn: "Topical anesthetic for medical and cosmetic products.",
-        status: "active"
-    },
-    {
         id: 4,
         nameRu: "Дифенгидрамин гидрохлорид (Димедрол)",
         nameUz: "Difengidramin gidroxlorid (Dimedrol)",
@@ -49,10 +7,10 @@ const INITIAL_PRODUCTS = [
         category: "chemical",
         image: "",
         prices: { retail: 625000, wholesale: 550000 },
-        minQty: 25,
-        descriptionRu: "Антигистаминное средство для фармацевтического производства.",
-        descriptionUz: "Farmatsevtika ishlab chiqarish uchun antigistamin vosita.",
-        descriptionEn: "Antihistamine for pharmaceutical manufacturing.",
+        minQty: 1,
+        descriptionRu: "Антигистаминное средство. Бочка: 25 кг. Минимум: 1 кг.",
+        descriptionUz: "Antigistamin vosita. Bochka: 25 kg. Minimum: 1 kg.",
+        descriptionEn: "Antihistamine. Drum: 25 kg. Minimum: 1 kg.",
         status: "active"
     },
     {
@@ -63,10 +21,10 @@ const INITIAL_PRODUCTS = [
         category: "chemical",
         image: "",
         prices: { retail: 450000, wholesale: 380000 },
-        minQty: 25,
-        descriptionRu: "Нестероидный противовоспалительный препарат (НПВП) для фармацевтического производства.",
-        descriptionUz: "Farmatsevtika ishlab chiqarish uchun steroid bo'lmagan yallig'lanishga qarshi dori (NSAID).",
-        descriptionEn: "Non-steroidal anti-inflammatory drug (NSAID) for pharmaceutical manufacturing.",
+        minQty: 1,
+        descriptionRu: "НПВП. Бочка: 25 кг. Минимум: 1 кг.",
+        descriptionUz: "NSAID. Bochka: 25 kg. Minimum: 1 kg.",
+        descriptionEn: "NSAID. Drum: 25 kg. Minimum: 1 kg.",
         status: "active"
     },
     {
@@ -77,10 +35,10 @@ const INITIAL_PRODUCTS = [
         category: "chemical",
         image: "https://i.ibb.co/N2JXcMXZ/4.webp",
         prices: { retail: 4000000, wholesale: 4000000 },
-        minQty: 25,
-        descriptionRu: "Ноотропный ингредиент для добавок для здоровья мозга.",
-        descriptionUz: "Miya sog'ligi uchun qo'shimchalar uchun nootrop ingredient.",
-        descriptionEn: "Nootropic ingredient for brain health supplements.",
+        minQty: 1,
+        descriptionRu: "Ноотроп. Бочка: 25 кг. Минимум: 1 кг.",
+        descriptionUz: "Nootrop. Bochka: 25 kg. Minimum: 1 kg.",
+        descriptionEn: "Nootropic. Drum: 25 kg. Minimum: 1 kg.",
         status: "active"
     },
     {
@@ -92,9 +50,9 @@ const INITIAL_PRODUCTS = [
         image: "",
         prices: { retail: 230000, wholesale: 230000 },
         minQty: 50,
-        descriptionRu: "Антифлатулент для фармацевтических препаратов.",
-        descriptionUz: "Farmatsevtik preparatlar uchun antiflatulent.",
-        descriptionEn: "Antiflatulent for pharmaceutical preparations.",
+        descriptionRu: "Антифлатулент. Бочка: 50 кг. Минимум: 50 кг.",
+        descriptionUz: "Antiflatulent. Bochka: 50 kg. Minimum: 50 kg.",
+        descriptionEn: "Antiflatulent. Drum: 50 kg. Minimum: 50 kg.",
         status: "active"
     },
     {
@@ -105,10 +63,10 @@ const INITIAL_PRODUCTS = [
         category: "chemical",
         image: "",
         prices: { retail: 450000, wholesale: 400000 },
-        minQty: 25,
-        descriptionRu: "Антисептик для фармацевтических и медицинских применений.",
-        descriptionUz: "Farmatsevtik va tibbiy qo'llanishlar uchun antiseptik.",
-        descriptionEn: "Antiseptic for pharmaceutical and medical applications.",
+        minQty: 5,
+        descriptionRu: "Антисептик. Бочка: 25 кг. Минимум: 5 кг.",
+        descriptionUz: "Antiseptik. Bochka: 25 kg. Minimum: 5 kg.",
+        descriptionEn: "Antiseptic. Drum: 25 kg. Minimum: 5 kg.",
         status: "active"
     },
     {
@@ -119,10 +77,10 @@ const INITIAL_PRODUCTS = [
         category: "excipient",
         image: "https://i.ibb.co/N2JXcMXZ/4.webp",
         prices: { retail: 130000, wholesale: 100000 },
-        minQty: 25,
-        descriptionRu: "Фармацевтический эксципиент ПЭГ 6000.",
-        descriptionUz: "Farmatsevtik eksipiyent PEG 6000.",
-        descriptionEn: "Pharmaceutical excipient PEG 6000.",
+        minQty: 1,
+        descriptionRu: "Фармацевтический эксципиент. Бочка: 25 кг. Минимум: 1 кг.",
+        descriptionUz: "Farmatsevtik eksipiyent. Bochka: 25 kg. Minimum: 1 kg.",
+        descriptionEn: "Pharmaceutical excipient. Drum: 25 kg. Minimum: 1 kg.",
         status: "active"
     },
     {
@@ -133,10 +91,10 @@ const INITIAL_PRODUCTS = [
         category: "excipient",
         image: "https://i.ibb.co/N2JXcMXZ/4.webp",
         prices: { retail: 75000, wholesale: 75000 },
-        minQty: 10,
-        descriptionRu: "Смазывающий агент для производства таблеток.",
-        descriptionUz: "Tablet ishlab chiqarish uchun yog'lovchi modda.",
-        descriptionEn: "Lubricant for tablet manufacturing.",
+        minQty: 15,
+        descriptionRu: "Смазывающий агент. Мешок: 15 кг. Минимум: 15 кг.",
+        descriptionUz: "Yog'lovchi modda. Qop: 15 kg. Minimum: 15 kg.",
+        descriptionEn: "Lubricant. Bag: 15 kg. Minimum: 15 kg.",
         status: "active"
     },
     {
@@ -147,10 +105,10 @@ const INITIAL_PRODUCTS = [
         category: "excipient",
         image: "https://i.ibb.co/N2JXcMXZ/4.webp",
         prices: { retail: 350000, wholesale: 300000 },
-        minQty: 25,
-        descriptionRu: "Консервант для косметических и фармацевтических продуктов.",
-        descriptionUz: "Kosmetik va farmatsevtik mahsulotlar uchun konservant.",
-        descriptionEn: "Preservative for cosmetic and pharmaceutical products.",
+        minQty: 1,
+        descriptionRu: "Консервант. Бочка: 25 кг. Минимум: 1 кг.",
+        descriptionUz: "Konservant. Bochka: 25 kg. Minimum: 1 kg.",
+        descriptionEn: "Preservative. Drum: 25 kg. Minimum: 1 kg.",
         status: "active"
     },
     {
@@ -161,10 +119,10 @@ const INITIAL_PRODUCTS = [
         category: "excipient",
         image: "https://i.ibb.co/N2JXcMXZ/4.webp",
         prices: { retail: 350000, wholesale: 300000 },
-        minQty: 25,
-        descriptionRu: "Консервант для косметических и фармацевтических продуктов.",
-        descriptionUz: "Kosmetik va farmatsevtik mahsulotlar uchun konservant.",
-        descriptionEn: "Preservative for cosmetic and pharmaceutical products.",
+        minQty: 1,
+        descriptionRu: "Консервант. Бочка: 25 кг. Минимум: 1 кг.",
+        descriptionUz: "Konservant. Bochka: 25 kg. Minimum: 1 kg.",
+        descriptionEn: "Preservative. Drum: 25 kg. Minimum: 1 kg.",
         status: "active"
     },
     {
@@ -175,10 +133,10 @@ const INITIAL_PRODUCTS = [
         category: "excipient",
         image: "https://i.ibb.co/N2JXcMXZ/4.webp",
         prices: { retail: 350000, wholesale: 300000 },
-        minQty: 25,
-        descriptionRu: "Консервант для косметических и фармацевтических продуктов.",
-        descriptionUz: "Kosmetik va farmatsevtik mahsulotlar uchun konservant.",
-        descriptionEn: "Preservative for cosmetic and pharmaceutical products.",
+        minQty: 1,
+        descriptionRu: "Консервант. Бочка: 25 кг. Минимум: 1 кг.",
+        descriptionUz: "Konservant. Bochka: 25 kg. Minimum: 1 kg.",
+        descriptionEn: "Preservative. Drum: 25 kg. Minimum: 1 kg.",
         status: "active"
     },
     {
@@ -189,10 +147,10 @@ const INITIAL_PRODUCTS = [
         category: "excipient",
         image: "https://i.ibb.co/RGZXt7W7/16e5b0b663948251fb41b21e27bc7299.webp",
         prices: { retail: 250000, wholesale: 190000 },
-        minQty: 25,
-        descriptionRu: "Гипромеллоза для покрытия таблеток.",
-        descriptionUz: "Tablet qoplamalari uchun gipromeloza.",
-        descriptionEn: "Hydroxypropyl methylcellulose for tablet coating.",
+        minQty: 1,
+        descriptionRu: "Гипромеллоза. Бочка: 25 кг. Минимум: 1 кг.",
+        descriptionUz: "Gipromeloza. Bochka: 25 kg. Minimum: 1 kg.",
+        descriptionEn: "HPMC. Drum: 25 kg. Minimum: 1 kg.",
         status: "active"
     },
     {
@@ -204,23 +162,23 @@ const INITIAL_PRODUCTS = [
         image: "",
         prices: { retail: 2200000, wholesale: 220000 },
         minQty: 10,
-        descriptionRu: "Фармацевтический наполнитель для таблеток и капсул.",
-        descriptionUz: "Tabletalar va kapsulalar uchun farmatsevtik to'ldirgich.",
-        descriptionEn: "Pharmaceutical excipient for tablets and capsules.",
+        descriptionRu: "Фармацевтический наполнитель. Мешок: 10 кг. Минимум: 10 кг.",
+        descriptionUz: "Farmatsevtik to'ldirgich. Qop: 10 kg. Minimum: 10 kg.",
+        descriptionEn: "Pharmaceutical excipient. Bag: 10 kg. Minimum: 10 kg.",
         status: "active"
     },
     {
         id: 16,
-        nameRu: "Кроскармеллоза натрий",
+        nameRu: "Кроскармеллоза натрия",
         nameUz: "Kroskarmeloza natriy",
         nameEn: "Croscarmellose sodium",
         category: "excipient",
         image: "https://i.ibb.co/9mDLD7Cb/1ef3e382a9d3d4e76ddb914f6195f577.webp",
         prices: { retail: 300000, wholesale: 275000 },
-        minQty: 25,
-        descriptionRu: "Супердизинтегрант для фармацевтических таблеток.",
-        descriptionUz: "Farmatsevtik tabletalar uchun superdisintegrant.",
-        descriptionEn: "Superdisintegrant for pharmaceutical tablets.",
+        minQty: 1,
+        descriptionRu: "Супердизинтегрант. Бочка: 25 кг. Минимум: 1 кг.",
+        descriptionUz: "Superdisintegrant. Bochka: 25 kg. Minimum: 1 kg.",
+        descriptionEn: "Superdisintegrant. Drum: 25 kg. Minimum: 1 kg.",
         status: "active"
     },
     {
@@ -232,9 +190,9 @@ const INITIAL_PRODUCTS = [
         image: "https://i.ibb.co/N2JXcMXZ/4.webp",
         prices: { retail: 75000, wholesale: 75000 },
         minQty: 20,
-        descriptionRu: "Микрокристаллическая целлюлоза 101 для производства таблеток.",
-        descriptionUz: "Tablet ishlab chiqarish uchun mikrokristallik tsellyuloza 101.",
-        descriptionEn: "Microcrystalline cellulose 101 for tablet manufacturing.",
+        descriptionRu: "МКЦ 101. Мешок: 20 кг. Минимум: 20 кг.",
+        descriptionUz: "MKTS 101. Qop: 20 kg. Minimum: 20 kg.",
+        descriptionEn: "MCC 101. Bag: 20 kg. Minimum: 20 kg.",
         status: "active"
     },
     {
@@ -246,9 +204,9 @@ const INITIAL_PRODUCTS = [
         image: "",
         prices: { retail: 100000, wholesale: 100000 },
         minQty: 25,
-        descriptionRu: "Натрий КМЦ для фармацевтических применений.",
-        descriptionUz: "Farmatsevtik qo'llanishlar uchun natriy KMTS.",
-        descriptionEn: "Sodium CMC for pharmaceutical applications.",
+        descriptionRu: "Натрий КМЦ. Мешок: 25 кг. Минимум: 25 кг.",
+        descriptionUz: "Natriy KMTS. Qop: 25 kg. Minimum: 25 kg.",
+        descriptionEn: "Sodium CMC. Bag: 25 kg. Minimum: 25 kg.",
         status: "active"
     },
     {
@@ -260,9 +218,9 @@ const INITIAL_PRODUCTS = [
         image: "https://i.ibb.co/N2JXcMXZ/4.webp",
         prices: { retail: 75000, wholesale: 75000 },
         minQty: 25,
-        descriptionRu: "Супердизинтегрант для фармацевтических таблеток.",
-        descriptionUz: "Farmatsevtik tabletalar uchun superdisintegrant.",
-        descriptionEn: "Superdisintegrant for pharmaceutical tablets.",
+        descriptionRu: "Супердизинтегрант. Мешок: 25 кг. Минимум: 25 кг.",
+        descriptionUz: "Superdisintegrant. Qop: 25 kg. Minimum: 25 kg.",
+        descriptionEn: "Superdisintegrant. Bag: 25 kg. Minimum: 25 kg.",
         status: "active"
     },
     {
@@ -273,10 +231,10 @@ const INITIAL_PRODUCTS = [
         category: "chemical",
         image: "",
         prices: { retail: 600000, wholesale: 600000 },
-        minQty: 5,
-        descriptionRu: "Пищевой краситель для фармацевтической и пищевой промышленности.",
-        descriptionUz: "Farmatsevtika va oziq-ovqat sanoati uchun ozuqali bo'yoq.",
-        descriptionEn: "Food colorant for pharmaceutical and food industry.",
+        minQty: 1,
+        descriptionRu: "Пищевой краситель. Банка: 5 кг. Минимум: 1 кг.",
+        descriptionUz: "Ozuqali bo'yoq. Banka: 5 kg. Minimum: 1 kg.",
+        descriptionEn: "Food colorant. Jar: 5 kg. Minimum: 1 kg.",
         status: "active"
     },
     {
@@ -287,10 +245,10 @@ const INITIAL_PRODUCTS = [
         category: "chemical",
         image: "",
         prices: { retail: 600000, wholesale: 600000 },
-        minQty: 5,
-        descriptionRu: "Пищевой краситель для фармацевтической и пищевой промышленности.",
-        descriptionUz: "Farmatsevtika va oziq-ovqat sanoati uchun ozuqali bo'yoq.",
-        descriptionEn: "Food colorant for pharmaceutical and food industry.",
+        minQty: 1,
+        descriptionRu: "Пищевой краситель. Банка: 5 кг. Минимум: 1 кг.",
+        descriptionUz: "Ozuqali bo'yoq. Banka: 5 kg. Minimum: 1 kg.",
+        descriptionEn: "Food colorant. Jar: 5 kg. Minimum: 1 kg.",
         status: "active"
     },
     {
@@ -301,10 +259,10 @@ const INITIAL_PRODUCTS = [
         category: "chemical",
         image: "https://i.ibb.co/xKRbQpNG/b121558f3199ed5ca38627299198147a.webp",
         prices: { retail: 1150000, wholesale: 1050000 },
-        minQty: 25,
-        descriptionRu: "Антисептик для наружного применения.",
-        descriptionUz: "Tashqi qo'llanish uchun antiseptik.",
-        descriptionEn: "Antiseptic for external use.",
+        minQty: 1,
+        descriptionRu: "Антисептик. Бочка: 25 кг. Минимум: 1 кг.",
+        descriptionUz: "Antiseptik. Bochka: 25 kg. Minimum: 1 kg.",
+        descriptionEn: "Antiseptic. Drum: 25 kg. Minimum: 1 kg.",
         status: "active"
     },
     {
@@ -315,10 +273,10 @@ const INITIAL_PRODUCTS = [
         category: "chemical",
         image: "https://i.ibb.co/N2JXcMXZ/4.webp",
         prices: { retail: 2600000, wholesale: 2400000 },
-        minQty: 25,
-        descriptionRu: "Антигистаминное средство для фармацевтического производства.",
-        descriptionUz: "Farmatsevtika ishlab chiqarish uchun antigistamin vosita.",
-        descriptionEn: "Antihistamine for pharmaceutical manufacturing.",
+        minQty: 1,
+        descriptionRu: "Антигистамин. Бочка: 25 кг. Минимум: 1 кг.",
+        descriptionUz: "Antigistamin. Bochka: 25 kg. Minimum: 1 kg.",
+        descriptionEn: "Antihistamine. Drum: 25 kg. Minimum: 1 kg.",
         status: "active"
     }
 ];
