@@ -281,6 +281,18 @@ const INITIAL_PRODUCTS = [
     }
 ];
 
+
+function parseBarrelQty(description) {
+    if (!description) return null;
+    const match = description.match(/(?:Бочка|Мешок|Банка|Bochka|Drum|Bag|Jar):\s*(\d+)\s*(?:кг|kg)/i);
+    return match ? parseInt(match[1]) : null;
+}
+
+INITIAL_PRODUCTS.forEach(product => {
+    if (!product.barrelQty) {
+        product.barrelQty = parseBarrelQty(product.descriptionUz || product.descriptionRu || product.descriptionEn || '') || null;
+    }
+});
 // Node.js uchun export
 if (typeof module !== 'undefined' && module.exports) {
     module.exports = { INITIAL_PRODUCTS };
